@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.verikey.app"],
+        "components": [{ "/": "/verify/*" }]
+      }
+    ]
+  }
+}
