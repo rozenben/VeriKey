@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "VeriKey",
+    "slug": "verikey",
+    "version": "1.0.0",
+    "scheme": "verikey",
+    "platforms": ["ios", "android"],
+    "ios": {
+      "bundleIdentifier": "com.verikey.app",
+      "associatedDomains": ["applinks:yourdomain.com"]
+    },
+    "android": {
+      "package": "com.verikey.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [{ "scheme": "https", "host": "yourdomain.com", "pathPrefix": "/verify" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "plugins": ["expo-router", "expo-contacts"]
+  }
+}
