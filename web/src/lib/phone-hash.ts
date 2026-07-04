@@ -11,6 +11,9 @@ import { createHmac } from 'crypto';
 export function hmacPhone(raw: string): string {
   const secret = process.env.PHONE_HMAC_SECRET;
   if (!secret) throw new Error('PHONE_HMAC_SECRET environment variable is not set');
-  const normalized = raw.replace(/\D/g, '') || raw.trim().toLowerCase(); // digits for phone, lowercased for email
+  const digits = raw.replace(/\D/g, '');
+  // Use last 9 digits so +972532421234, 0532421234, and 532421234 all hash identically.
+  // Fall back to lowercased original for non-phone inputs (e.g. email).
+  const normalized = digits.length >= 9 ? digits.slice(-9) : digits || raw.trim().toLowerCase();
   return createHmac('sha256', secret).update(normalized).digest('hex');
 }

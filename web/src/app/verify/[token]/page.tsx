@@ -161,8 +161,12 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       const optRes = await fetch('/api/webauthn/register/options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: phoneNorm, display_name: phone }),
+        body: JSON.stringify({ phone_number: phoneNorm, display_name: phone, token }),
       });
+      if (optRes.status === 403) {
+        const { error } = await optRes.json().catch(() => ({}));
+        throw new Error(error ?? 'This link was not sent to that phone number.');
+      }
       if (!optRes.ok) throw new Error('Failed to get registration options');
       const regResponse = await startRegistration(await optRes.json());
       const verRes = await fetch('/api/webauthn/register/verify', {
@@ -187,6 +191,10 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone_number: phoneNorm, token }),
       });
+      if (optRes.status === 403) {
+        const { error } = await optRes.json().catch(() => ({}));
+        throw new Error(error ?? 'This link was not sent to that phone number.');
+      }
       if (!optRes.ok) throw new Error('Failed to get authentication options');
       const authResponse = await startAuthentication(await optRes.json());
       const verRes = await fetch('/api/webauthn/auth/verify', {
