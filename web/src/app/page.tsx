@@ -165,9 +165,11 @@ function loadHistory(): HistoryEntry[] {
 }
 
 function saveHistory(entry: HistoryEntry) {
-  const prev = loadHistory();
-  const next = [entry, ...prev].slice(0, 10);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  try {
+    const prev = loadHistory();
+    const next = [entry, ...prev].slice(0, 10);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  } catch {}
 }
 
 interface Prefs {
@@ -265,6 +267,9 @@ export default function HomePage() {
   const [showHistory, setShowHistory] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number>(0); // unix ms
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const requestIdRef = useRef('');
+  const sentRecipientRef = useRef('');
+  const expiresAtRef = useRef(0);
 
   // Passkey self-registration
   type PasskeyStatus = 'unknown' | 'checking' | 'unregistered' | 'registered' | 'success' | 'error';
@@ -325,13 +330,23 @@ export default function HomePage() {
     if (!hasProfile) setMyPhone(T[lang].defaultCountryCode);
   }, [lang]);
 
+  // Keep refs in sync so the interval always reads current values
+  useEffect(() => { requestIdRef.current = requestId; }, [requestId]);
+  useEffect(() => { sentRecipientRef.current = sentRecipient; }, [sentRecipient]);
+  useEffect(() => { expiresAtRef.current = expiresAt; }, [expiresAt]);
+
   // Polling for result — stops when approved, declined, or expired
   useEffect(() => {
     if (step !== 'sent') return;
 
     function finish(status: 'approved' | 'declined' | 'expired', nextStep: Step) {
       clearInterval(pollRef.current!);
-      const entry: HistoryEntry = { id: requestId, recipient: sentRecipient, sentAt: new Date().toISOString(), status };
+      const entry: HistoryEntry = {
+        id: requestIdRef.current,
+        recipient: sentRecipientRef.current,
+        sentAt: new Date().toISOString(),
+        status,
+      };
       saveHistory(entry);
       setHistory(loadHistory());
       setStep(nextStep);
@@ -339,22 +354,26 @@ export default function HomePage() {
 
     pollRef.current = setInterval(async () => {
       // Check client-side expiry first (no network round-trip needed)
-      if (expiresAt && Date.now() > expiresAt) {
+      if (expiresAtRef.current && Date.now() > expiresAtRef.current) {
         finish('expired', 'expired');
         return;
       }
+      let statusValue: string | null = null;
       try {
-        const res = await fetch(`/api/requests/${requestId}/status`);
+        const res = await fetch(`/api/requests/${requestIdRef.current}/status`);
         if (!res.ok) return;
         const data = await res.json();
-        if (data.status === 'approved') finish('approved', 'approved');
-        else if (data.status === 'rejected' || data.status === 'declined') finish('declined', 'declined');
-        else if (data.status === 'expired') finish('expired', 'expired');
-      } catch {}
+        statusValue = data.status;
+      } catch {
+        return;
+      }
+      if (statusValue === 'approved') finish('approved', 'approved');
+      else if (statusValue === 'rejected' || statusValue === 'declined') finish('declined', 'declined');
+      else if (statusValue === 'expired') finish('expired', 'expired');
     }, 2000);
 
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [step, requestId, expiresAt, sentRecipient]);
+  }, [step]);
 
   const t = T[lang];
 
