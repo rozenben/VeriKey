@@ -86,6 +86,13 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
   // Whether the phone was auto-filled from the saved profile
   const [autoFilledPhone, setAutoFilledPhone] = useState('');
 
+  // Suppress PWA install prompt on this page — install is only offered from the main page
+  useEffect(() => {
+    const suppress = (e: Event) => e.preventDefault();
+    window.addEventListener('beforeinstallprompt', suppress);
+    return () => window.removeEventListener('beforeinstallprompt', suppress);
+  }, []);
+
   useEffect(() => {
     async function init() {
       // Load saved prefs
