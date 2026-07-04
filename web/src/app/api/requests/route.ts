@@ -7,11 +7,13 @@ import { hmacPhone } from '@/lib/phone-hash';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { requester_phone, requester_name, recipient_phone, message_text } = body;
+    const { requester_phone, requester_name, recipient_phone, message_text, purpose } = body;
 
     if (!requester_phone || !requester_name || !recipient_phone || !message_text) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    const isSelfRegister = purpose === 'self_register';
 
     const requesterHash = hmacPhone(requester_phone);
     const recipientHash = hmacPhone(recipient_phone);
@@ -36,9 +38,9 @@ export async function POST(req: NextRequest) {
     const result = await pool.query(
       `INSERT INTO verification_requests
          (requester_user_id, recipient_phone_hash, message_text, token, expires_at)
-       VALUES ($1, $2, $3, $4, NOW() + INTERVAL '1 minute')
+       VALUES ($1, $2, $3, $4, NOW() + ($5 * INTERVAL '1 minute'))
        RETURNING id, expires_at`,
-      [requesterId, recipientHash, message_text, token]
+      [requesterId, recipientHash, message_text, token, isSelfRegister ? 5 : 1]
     );
 
     return NextResponse.json({

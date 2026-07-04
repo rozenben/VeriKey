@@ -13,9 +13,13 @@ const T = {
     errorTitle: 'משהו השתבש',
     successTitle: 'זהות אומתה',
     successDesc: 'האימות הביומטרי שלך הצליח.',
+    selfSetupSuccessTitle: 'האימות הביומטרי הוגדר!',
+    selfSetupSuccessDesc: 'מעכשיו תוכל לאשר בקשות אימות בלחיצה אחת.',
     declinedTitle: 'דחייה',
     declinedDesc: 'דחית את בקשת האימות.',
     requesterMsg: (name: string) => `${name} מבקש לאמת את זהותך.`,
+    selfSetupTitle: 'הגדרת VeriKey',
+    selfSetupDesc: 'לחץ כדי להגדיר אימות ביומטרי במכשיר זה.',
     reasonLabel: 'סיבה:',
     phonePrompt: 'הזן את מספר הטלפון שלך לאימות:',
     phonePlaceholder: '+972 50 000 0000',
@@ -35,9 +39,13 @@ const T = {
     errorTitle: 'Something went wrong',
     successTitle: 'Identity Confirmed',
     successDesc: 'Your biometric verification was successful.',
+    selfSetupSuccessTitle: 'Biometric verification is set up!',
+    selfSetupSuccessDesc: 'You can now approve verification requests in one tap.',
     declinedTitle: 'Declined',
     declinedDesc: 'You declined this verification request.',
     requesterMsg: (name: string) => `${name} is asking you to confirm your identity.`,
+    selfSetupTitle: 'Set up VeriKey',
+    selfSetupDesc: 'Tap below to register your biometric on this device.',
     reasonLabel: 'Reason:',
     phonePrompt: 'Enter your phone number to verify:',
     phonePlaceholder: '+1 555 000 0000',
@@ -57,7 +65,7 @@ function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, '');
 }
 
-type RequestDetails = { requester_name: string; message_text: string; status: string };
+type RequestDetails = { requester_name: string; message_text: string; status: string; is_self_registration: boolean };
 type FlowState = 'idle' | 'loading' | 'phone-input' | 'register' | 'authenticate' | 'success' | 'declined' | 'expired' | 'error';
 
 async function checkCredentials(phoneValue: string, tokenValue: string): Promise<'register' | 'authenticate' | 'error'> {
@@ -290,8 +298,12 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
     <main style={containerStyle}>
       <button style={langBtn} onClick={toggleLang}>{t.langLabel}</button>
       <div style={{ fontSize: '3rem' }}>✅</div>
-      <h1 style={{ fontSize: '1.5rem', marginTop: '1rem' }}>{t.successTitle}</h1>
-      <p style={{ color: '#6b7280' }}>{t.successDesc}</p>
+      <h1 style={{ fontSize: '1.5rem', marginTop: '1rem' }}>
+        {requestDetails?.is_self_registration ? t.selfSetupSuccessTitle : t.successTitle}
+      </h1>
+      <p style={{ color: '#6b7280' }}>
+        {requestDetails?.is_self_registration ? t.selfSetupSuccessDesc : t.successDesc}
+      </p>
     </main>
   );
 
@@ -312,12 +324,21 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
         <>
           <div style={{ fontSize: '2.5rem' }}>🔐</div>
           <h1 style={{ fontSize: '1.5rem', marginTop: '1rem', marginBottom: '0.5rem' }}>VeriKey</h1>
-          <p style={{ color: '#374151', marginBottom: '0.25rem' }}>
-            <strong>{t.requesterMsg(requestDetails.requester_name)}</strong>
-          </p>
-          <p style={{ color: '#6b7280', fontStyle: 'italic', marginBottom: '1.5rem' }}>
-            {t.reasonLabel} {requestDetails.message_text}
-          </p>
+          {requestDetails.is_self_registration ? (
+            <p style={{ color: '#374151', marginBottom: '1.5rem' }}>
+              <strong>{t.selfSetupTitle}</strong><br />
+              <span style={{ color: '#6b7280', fontSize: '0.9rem' }}>{t.selfSetupDesc}</span>
+            </p>
+          ) : (
+            <>
+              <p style={{ color: '#374151', marginBottom: '0.25rem' }}>
+                <strong>{t.requesterMsg(requestDetails.requester_name)}</strong>
+              </p>
+              <p style={{ color: '#6b7280', fontStyle: 'italic', marginBottom: '1.5rem' }}>
+                {t.reasonLabel} {requestDetails.message_text}
+              </p>
+            </>
+          )}
         </>
       )}
 
@@ -352,9 +373,13 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
 
       {flowState === 'register' && (
         <>
-          <p style={{ color: '#374151', marginBottom: '1rem' }}>{t.noPasskeyDesc}</p>
+          {!requestDetails?.is_self_registration && (
+            <p style={{ color: '#374151', marginBottom: '1rem' }}>{t.noPasskeyDesc}</p>
+          )}
           <button onClick={handleRegister} style={{ ...btnStyle, background: '#059669', color: '#fff' }}>{t.setupBtn}</button>
-          <button onClick={handleDecline} style={{ ...btnStyle, background: '#f3f4f6', color: '#374151' }}>{t.declineBtn}</button>
+          {!requestDetails?.is_self_registration && (
+            <button onClick={handleDecline} style={{ ...btnStyle, background: '#f3f4f6', color: '#374151' }}>{t.declineBtn}</button>
+          )}
         </>
       )}
 

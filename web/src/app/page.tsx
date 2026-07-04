@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { startRegistration } from '@simplewebauthn/browser';
 
 // ── Translations ────────────────────────────────────────────────────────────
 const T = {
@@ -63,9 +62,12 @@ const T = {
     errorNetwork: 'שגיאת רשת. אנא נסה שנית.',
     privacy: 'מספרי הטלפון מועברים ב־HTTPS ומגובבים בשרת עם מפתח סודי — לא נשמרים בטקסט גלוי.\nאימות ביומטרי מבוסס על WebAuthn / Passkeys — ללא סיסמה.',
     passkeySetupTitle: 'הגדרת אימות ביומטרי',
-    passkeySetupDesc: 'הגדר מפתח גישה עכשיו כדי שתוכל לאשר בקשות עתידיות בלחיצה אחת.',
-    passkeySetupBtn: 'הגדר Face ID / טביעת אצבע',
-    passkeyReregisterBtn: 'עדכן מפתח גישה',
+    passkeySetupDesc: 'לאימות בקשות עתידיות בלחיצה אחת, הגדר מפתח גישה. נשלח אליך קישור הגדרה.',
+    passkeySetupBtn: 'שלח קישור הגדרה ל-WhatsApp',
+    passkeySetupBtnSms: 'שלח קישור הגדרה ב-SMS',
+    passkeySetupSent: 'פתח את WhatsApp ושלח את ההודעה — לאחר מכן לחץ על הקישור שתקבל.',
+    passkeySetupSentSms: 'פתח את ה-SMS ושלח את ההודעה — לאחר מכן לחץ על הקישור שתקבל.',
+    passkeySetupWaiting: 'ממתין לסיום ההגדרה…',
     passkeyRegistered: 'מפתח גישה רשום ✓',
     passkeyRegisteredDesc: 'מכשיר זה מוגדר לאימות ביומטרי.',
     passkeySuccess: 'מפתח הגישה הוגדר בהצלחה!',
@@ -129,9 +131,12 @@ const T = {
     errorNetwork: 'Network error. Please try again.',
     privacy: 'Phone numbers are sent over HTTPS and hashed server-side with a secret key — never stored in plain text.\nBiometric verification uses WebAuthn / Passkeys — no password needed.',
     passkeySetupTitle: 'Set up Biometric Verification',
-    passkeySetupDesc: 'Register a passkey now so you can approve future verification requests in one tap.',
-    passkeySetupBtn: 'Set up Face ID / Fingerprint',
-    passkeyReregisterBtn: 'Update passkey',
+    passkeySetupDesc: 'To approve future requests in one tap, set up a passkey. We\'ll send a setup link to your number.',
+    passkeySetupBtn: 'Send setup link via WhatsApp',
+    passkeySetupBtnSms: 'Send setup link via SMS',
+    passkeySetupSent: 'Open WhatsApp and send the message — then tap the link you receive.',
+    passkeySetupSentSms: 'Open SMS and send the message — then tap the link you receive.',
+    passkeySetupWaiting: 'Waiting for setup to complete…',
     passkeyRegistered: 'Passkey registered ✓',
     passkeyRegisteredDesc: 'This device is set up for biometric verification.',
     passkeySuccess: 'Passkey set up successfully!',
@@ -262,9 +267,14 @@ export default function HomePage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Passkey self-registration
-  type PasskeyStatus = 'unknown' | 'checking' | 'unregistered' | 'registered' | 'registering' | 'success' | 'error';
+  type PasskeyStatus = 'unknown' | 'checking' | 'unregistered' | 'registered' | 'success' | 'error';
   const [passkeyStatus, setPasskeyStatus] = useState<PasskeyStatus>('unknown');
   const [passkeyError, setPasskeyError] = useState('');
+  type SetupLinkState = 'idle' | 'sending' | 'sent-wa' | 'sent-sms' | 'waiting' | 'done';
+  const [setupLinkState, setSetupLinkState] = useState<SetupLinkState>('idle');
+  const [setupRequestId, setSetupRequestId] = useState('');
+  const [setupExpiresAt, setSetupExpiresAt] = useState(0);
+  const setupPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Load config & saved preferences ────────────────────────────────────
   useEffect(() => {
@@ -493,30 +503,73 @@ export default function HomePage() {
       .catch(() => setPasskeyStatus('unknown'));
   }, [myPhone, hasProfile]);
 
-  const handleSelfRegister = useCallback(async () => {
-    setPasskeyStatus('registering');
+  const handleSendSetupLink = useCallback(async (via: 'whatsapp' | 'sms') => {
+    setSetupLinkState('sending');
     setPasskeyError('');
     try {
       const norm = normalizePhone(myPhone);
-      const optRes = await fetch('/api/webauthn/register/options', {
+      const setupMsg = lang === 'he'
+        ? `הגדר את VeriKey שלך — לחץ כאן:`
+        : `Set up your VeriKey biometric — tap here:`;
+      const res = await fetch('/api/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: norm, display_name: myName }),
+        body: JSON.stringify({
+          requester_phone: norm,
+          requester_name: myName,
+          recipient_phone: norm,
+          message_text: setupMsg,
+          purpose: 'self_register',
+        }),
       });
-      if (!optRes.ok) throw new Error('Failed to get registration options');
-      const regResponse = await startRegistration(await optRes.json());
-      const verRes = await fetch('/api/webauthn/register/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: norm, registration_response: regResponse }),
-      });
-      if (!verRes.ok) throw new Error('Registration verification failed');
-      setPasskeyStatus('success');
+      if (!res.ok) throw new Error('Failed to create setup link');
+      const data = await res.json();
+      const verifyUrl: string = data.verification_url;
+      setSetupRequestId(data.id);
+      setSetupExpiresAt(data.expires_at ? new Date(data.expires_at).getTime() : Date.now() + 300_000);
+
+      const msgText = lang === 'he'
+        ? `${setupMsg} ${verifyUrl}`
+        : `${setupMsg} ${verifyUrl}`;
+
+      if (via === 'whatsapp') {
+        window.open(`https://wa.me/${norm}?text=${encodeURIComponent(msgText)}`, '_blank');
+        setSetupLinkState('sent-wa');
+      } else {
+        window.open(`sms:${norm}?body=${encodeURIComponent(msgText)}`, '_blank');
+        setSetupLinkState('sent-sms');
+      }
     } catch (err: unknown) {
       setPasskeyError(err instanceof Error ? err.message : t.passkeyError);
       setPasskeyStatus('error');
+      setSetupLinkState('idle');
     }
-  }, [myPhone, myName, t]);
+  }, [myPhone, myName, lang, t]);
+
+  // Poll for setup completion
+  useEffect(() => {
+    if (setupLinkState !== 'sent-wa' && setupLinkState !== 'sent-sms' && setupLinkState !== 'waiting') return;
+    setupPollRef.current = setInterval(async () => {
+      if (setupExpiresAt && Date.now() > setupExpiresAt) {
+        clearInterval(setupPollRef.current!);
+        setSetupLinkState('idle');
+        setPasskeyError(lang === 'he' ? 'פג תוקף. נסה שנית.' : 'Link expired. Please try again.');
+        setPasskeyStatus('error');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/requests/${setupRequestId}/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === 'approved') {
+          clearInterval(setupPollRef.current!);
+          setSetupLinkState('done');
+          setPasskeyStatus('success');
+        }
+      } catch {}
+    }, 2000);
+    return () => { if (setupPollRef.current) clearInterval(setupPollRef.current); };
+  }, [setupLinkState, setupRequestId, setupExpiresAt, lang]);
 
   function handleReset() {
     setStep('form');
@@ -682,13 +735,29 @@ export default function HomePage() {
           </div>
 
           {/* ── Passkey setup panel ── */}
-          {step === 'form' && passkeyStatus === 'unregistered' && (
+          {step === 'form' && passkeyStatus === 'unregistered' && setupLinkState === 'idle' && (
             <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: '0.85rem', padding: '1rem 1.1rem', marginBottom: '1.25rem' }}>
               <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1e40af', marginBottom: '0.25rem' }}>🔑 {t.passkeySetupTitle}</div>
               <p style={{ color: '#374151', fontSize: '0.85rem', margin: '0 0 0.75rem' }}>{t.passkeySetupDesc}</p>
-              <button onClick={handleSelfRegister} style={{ ...btnPrimary, marginTop: 0, fontSize: '0.9rem', padding: '0.7rem' }}>
+              <button onClick={() => handleSendSetupLink('whatsapp')} style={{ ...btnPrimary, marginTop: 0, fontSize: '0.88rem', padding: '0.65rem', background: '#25D366', marginBottom: '0.4rem' }}>
                 {t.passkeySetupBtn}
               </button>
+              <button onClick={() => handleSendSetupLink('sms')} style={{ ...btnPrimary, marginTop: 0, fontSize: '0.88rem', padding: '0.65rem', background: '#6b7280' }}>
+                {t.passkeySetupBtnSms}
+              </button>
+            </div>
+          )}
+
+          {step === 'form' && passkeyStatus === 'unregistered' && setupLinkState === 'sending' && (
+            <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: '0.85rem', padding: '0.85rem 1.1rem', marginBottom: '1.25rem', textAlign: 'center', color: '#1e40af', fontSize: '0.88rem' }}>
+              ⏳ {lang === 'he' ? 'יוצר קישור…' : 'Creating link…'}
+            </div>
+          )}
+
+          {step === 'form' && passkeyStatus === 'unregistered' && (setupLinkState === 'sent-wa' || setupLinkState === 'sent-sms' || setupLinkState === 'waiting') && (
+            <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: '0.85rem', padding: '1rem 1.1rem', marginBottom: '1.25rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e40af', marginBottom: '0.4rem' }}>📲 {setupLinkState === 'sent-wa' ? t.passkeySetupSent : t.passkeySetupSentSms}</div>
+              <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>⏳ {t.passkeySetupWaiting}</div>
             </div>
           )}
 
@@ -701,17 +770,12 @@ export default function HomePage() {
             </div>
           )}
 
-          {step === 'form' && passkeyStatus === 'registering' && (
-            <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: '0.85rem', padding: '0.85rem 1.1rem', marginBottom: '1.25rem', textAlign: 'center', color: '#1e40af', fontSize: '0.88rem' }}>
-              ⏳ {lang === 'he' ? 'ממתין לאישור ביומטרי…' : 'Waiting for biometric confirmation…'}
-            </div>
-          )}
-
           {step === 'form' && passkeyStatus === 'error' && (
             <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: '0.85rem', padding: '0.75rem 1.1rem', marginBottom: '1.25rem' }}>
               <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#dc2626', marginBottom: '0.25rem' }}>⚠️ {t.passkeyError}</div>
               <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: '0 0 0.5rem' }}>{passkeyError}</p>
-              <button onClick={handleSelfRegister} style={{ background: 'none', border: '1.5px solid #fca5a5', borderRadius: '0.5rem', padding: '0.3rem 0.65rem', fontSize: '0.78rem', fontWeight: 600, color: '#dc2626', cursor: 'pointer' }}>
+              <button onClick={() => { setPasskeyStatus('unregistered'); setSetupLinkState('idle'); setPasskeyError(''); }}
+                style={{ background: 'none', border: '1.5px solid #fca5a5', borderRadius: '0.5rem', padding: '0.3rem 0.65rem', fontSize: '0.78rem', fontWeight: 600, color: '#dc2626', cursor: 'pointer' }}>
                 {lang === 'he' ? 'נסה שנית' : 'Try again'}
               </button>
             </div>
