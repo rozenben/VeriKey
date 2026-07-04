@@ -1,0 +1,19 @@
+{
+  "name": "VeriKey",
+  "short_name": "VeriKey",
+  "description": "Biometric identity verification — no app install required.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f9fafb",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
