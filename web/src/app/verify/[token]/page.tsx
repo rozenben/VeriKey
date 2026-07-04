@@ -25,6 +25,7 @@ const T = {
     approveBtn: 'אשר עם Face ID / טביעת אצבע',
     declineBtn: 'דחה',
     langLabel: 'EN',
+    notYou: 'זה לא אתה?',
   },
   en: {
     dir: 'ltr' as const,
@@ -46,6 +47,7 @@ const T = {
     approveBtn: 'Approve with Face ID / Fingerprint',
     declineBtn: 'Decline',
     langLabel: 'עברית',
+    notYou: 'Not you?',
   },
 } as const;
 
@@ -60,6 +62,18 @@ async function hashPhone(phone: string): Promise<string> {
 type RequestDetails = { requester_name: string; message_text: string; status: string };
 type FlowState = 'idle' | 'loading' | 'phone-input' | 'register' | 'authenticate' | 'success' | 'declined' | 'expired' | 'error';
 
+async function checkCredentials(phoneValue: string, tokenValue: string): Promise<'register' | 'authenticate' | 'error'> {
+  const hash = await hashPhone(phoneValue);
+  const res = await fetch('/api/webauthn/auth/options', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone_number_hash: hash, token: tokenValue }),
+  });
+  if (res.status === 404) return 'register';
+  if (res.ok) return 'authenticate';
+  return 'error';
+}
+
 export default function VerifyPage({ params }: { params: { token: string } }) {
   const { token } = params;
   const [lang, setLang] = useState<Lang>('he');
@@ -69,32 +83,46 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
   const [phoneHash, setPhoneHash] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
-
-  // Load saved lang preference
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('verikey_prefs') ?? '{}');
-      if (saved.lang) setLang(saved.lang);
-    } catch {}
-  }, []);
+  // Whether the phone was auto-filled from the saved profile
+  const [autoFilledPhone, setAutoFilledPhone] = useState('');
 
   useEffect(() => {
-    async function loadRequest() {
+    async function init() {
+      // Load saved prefs
+      let savedPhone = '';
+      try {
+        const prefs = JSON.parse(localStorage.getItem('verikey_prefs') ?? '{}');
+        if (prefs.lang) setLang(prefs.lang);
+        if (prefs.phone) savedPhone = prefs.phone;
+      } catch {}
+
+      // Load the verification request
       try {
         const res = await fetch(`/api/verify/${token}`);
         if (res.status === 410) { setFlowState('expired'); return; }
         if (!res.ok) { setFlowState('error'); setErrorMsg('Verification link not found or invalid.'); return; }
         const data: RequestDetails = await res.json();
         setRequestDetails(data);
-        if (data.status === 'approved') setFlowState('success');
-        else if (data.status === 'rejected') setFlowState('declined');
-        else setFlowState('phone-input');
+        if (data.status === 'approved') { setFlowState('success'); return; }
+        if (data.status === 'rejected') { setFlowState('declined'); return; }
+
+        // If we have a saved phone, auto-check credentials and skip the phone input step
+        if (savedPhone) {
+          setPhone(savedPhone);
+          setAutoFilledPhone(savedPhone);
+          const hash = await hashPhone(savedPhone);
+          setPhoneHash(hash);
+          const next = await checkCredentials(savedPhone, token);
+          setFlowState(next === 'error' ? 'phone-input' : next);
+        } else {
+          setFlowState('phone-input');
+        }
       } catch {
         setFlowState('error');
         setErrorMsg('Failed to load verification request.');
       }
     }
-    loadRequest();
+    init();
   }, [token]);
 
   const t = T[lang];
@@ -297,6 +325,18 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
             {t.continueBtn}
           </button>
         </>
+      )}
+
+      {/* Phone chip shown when auto-filled — lets user switch to a different number */}
+      {autoFilledPhone && (flowState === 'register' || flowState === 'authenticate') && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.75rem', background: '#f0f4ff', borderRadius: '0.75rem', padding: '0.5rem 0.9rem' }}>
+          <span style={{ fontSize: '1rem' }}>📱</span>
+          <span style={{ fontWeight: 600, color: '#1e3a8a', direction: 'ltr' }}>{autoFilledPhone}</span>
+          <button onClick={() => { setAutoFilledPhone(''); setPhone(''); setPhoneHash(''); setFlowState('phone-input'); }}
+            style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+            {t.notYou}
+          </button>
+        </div>
       )}
 
       {flowState === 'register' && (
