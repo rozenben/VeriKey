@@ -84,6 +84,8 @@ const T = {
     passkeyError: 'ההגדרה נכשלה. אנא נסה שנית.',
     langLabel: 'EN',
     defaultCountryCode: '+972',
+    sendBlockedTitle: 'יש להגדיר אימות ביומטרי תחילה',
+    sendBlockedDesc: 'לפני שליחת בקשת אימות לאחרים, עליך להגדיר את מפתח הגישה האישי שלך.',
     sending: 'יוצר קישור אימות…',
   },
   en: {
@@ -153,6 +155,8 @@ const T = {
     passkeyError: 'Setup failed. Please try again.',
     langLabel: 'עברית',
     defaultCountryCode: '+1',
+    sendBlockedTitle: 'Set up your passkey first',
+    sendBlockedDesc: 'Before sending a verification request to others, you need to set up your own passkey.',
     sending: 'Creating verification link…',
   },
 } as const;
@@ -1046,9 +1050,19 @@ export default function HomePage() {
             </div>
           )}
 
+          {/* ── step === 'form': blocked state — passkey not yet registered ── */}
+          {/* Shown when the user has a profile but hasn't completed their own biometric
+              setup yet. The setup panel above remains visible so they can proceed. */}
+          {step === 'form' && passkeyStatus !== 'registered' && passkeyStatus !== 'success' && passkeyStatus !== 'checking' && passkeyStatus !== 'unknown' && (
+            <div style={{ background: '#fef9c3', border: '1.5px solid #fde68a', borderRadius: '0.85rem', padding: '0.85rem 1.1rem', marginBottom: '1.25rem', textAlign: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#92400e', marginBottom: '0.25rem' }}>🔒 {t.sendBlockedTitle}</div>
+              <p style={{ color: '#78350f', fontSize: '0.82rem', margin: 0 }}>{t.sendBlockedDesc}</p>
+            </div>
+          )}
+
           {/* ── step === 'form': send form ── */}
-          {/* The main input area: platform toggle, recipient field, message, send buttons. */}
-          {step === 'form' && (
+          {/* Only shown once the user has a registered passkey. */}
+          {step === 'form' && (passkeyStatus === 'registered' || passkeyStatus === 'success') && (
             <>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem', color: '#111', marginTop: 0 }}>{t.formTitle}</h2>
 
