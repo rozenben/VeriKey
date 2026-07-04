@@ -198,6 +198,7 @@ export default function HomePage() {
   const [requestId, setRequestId] = useState('');
   // Display label for "sent" screen — phone or email depending on platform
   const [sentRecipient, setSentRecipient] = useState('');
+  const [pwaInstallable, setPwaInstallable] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Load config & saved preferences ────────────────────────────────────
@@ -228,6 +229,12 @@ export default function HomePage() {
 
     setMessage(T[activeLang].defaultMessage);
     setRecipientPhone(T[activeLang].defaultCountryCode);
+
+    // Listen for PWA install availability (prompt was captured in layout script)
+    if ((window as any).__pwaPrompt) setPwaInstallable(true);
+    const onInstallable = () => setPwaInstallable(true);
+    window.addEventListener('pwa-installable', onInstallable);
+    return () => window.removeEventListener('pwa-installable', onInstallable);
   }, []);
 
   // Update prefix & default message when lang changes
@@ -430,6 +437,19 @@ export default function HomePage() {
         <div style={{ fontSize: '2.5rem', marginBottom: '0.25rem' }}>🔐</div>
         <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1e3a8a', margin: 0 }}>VeriKey</h1>
         <p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '0.25rem', direction: t.dir }}>{t.appTagline}</p>
+        {pwaInstallable && (
+          <button
+            onClick={async () => {
+              const prompt = (window as any).__pwaPrompt;
+              if (!prompt) return;
+              await prompt.prompt();
+              prompt.userChoice.then(() => { (window as any).__pwaPrompt = null; setPwaInstallable(false); });
+            }}
+            style={{ marginTop: '0.6rem', background: '#1e3a8a', color: '#fff', border: 'none', borderRadius: '0.5rem', padding: '0.4rem 1rem', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}
+          >
+            📲 {lang === 'he' ? 'התקן אפליקציה' : 'Install App'}
+          </button>
+        )}
       </div>
 
       {/* ── ONBOARDING ── */}
