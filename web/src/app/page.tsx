@@ -33,7 +33,15 @@ const T = {
     sendEmail: 'שלח דרך אימייל 📧',
     messageSent: 'ההודעה נשלחה!',
     waitingDesc: (recipient: string) => `ממתין ש־${recipient} יאמת…`,
-    pollNote: 'הדף מתעדכן אוטומטית כל 4 שניות.',
+    pollNote: 'הדף מתעדכן אוטומטית. הקישור תקף דקה אחת.',
+    expired: 'הקישור פג תוקף',
+    expiredDesc: 'הנמען לא הגיב בתוך דקה.',
+    historyTitle: 'היסטוריית אימותים',
+    historyEmpty: 'אין היסטוריה עדיין.',
+    statusApproved: 'אושר ✅',
+    statusDeclined: 'נדחה ❌',
+    statusExpired: 'פג תוקף ⏰',
+    statusPending: 'ממתין…',
     verifyLinkLabel: 'קישור אימות:',
     sendAnother: 'שלח בקשה נוספת',
     approved: 'זהות אומתה!',
@@ -79,7 +87,15 @@ const T = {
     sendEmail: 'Send via Email 📧',
     messageSent: 'Message sent!',
     waitingDesc: (recipient: string) => `Waiting for ${recipient} to verify…`,
-    pollNote: 'This page checks automatically every 4 seconds.',
+    pollNote: 'This page updates automatically. Link is valid for 1 minute.',
+    expired: 'Link Expired',
+    expiredDesc: 'The recipient did not respond within 1 minute.',
+    historyTitle: 'Verification History',
+    historyEmpty: 'No history yet.',
+    statusApproved: 'Approved ✅',
+    statusDeclined: 'Declined ❌',
+    statusExpired: 'Expired ⏰',
+    statusPending: 'Pending…',
     verifyLinkLabel: 'Verification link:',
     sendAnother: 'Send another request',
     approved: 'Identity Verified!',
@@ -103,7 +119,26 @@ const T = {
 
 type Lang = keyof typeof T;
 type Platform = 'whatsapp' | 'sms' | 'email';
-type Step = 'form' | 'sending' | 'sent' | 'approved' | 'declined';
+type Step = 'form' | 'sending' | 'sent' | 'approved' | 'declined' | 'expired';
+
+interface HistoryEntry {
+  id: string;
+  recipient: string;
+  sentAt: string; // ISO
+  status: 'approved' | 'declined' | 'expired';
+}
+
+const HISTORY_KEY = 'verikey_history';
+
+function loadHistory(): HistoryEntry[] {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]'); } catch { return []; }
+}
+
+function saveHistory(entry: HistoryEntry) {
+  const prev = loadHistory();
+  const next = [entry, ...prev].slice(0, 10);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+}
 
 interface Prefs {
   lang?: Lang;
@@ -199,6 +234,9 @@ export default function HomePage() {
   // Display label for "sent" screen — phone or email depending on platform
   const [sentRecipient, setSentRecipient] = useState('');
   const [pwaInstallable, setPwaInstallable] = useState(false);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<number>(0); // unix ms
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Load config & saved preferences ────────────────────────────────────
@@ -230,6 +268,8 @@ export default function HomePage() {
     setMessage(T[activeLang].defaultMessage);
     setRecipientPhone(T[activeLang].defaultCountryCode);
 
+    setHistory(loadHistory());
+
     // Listen for PWA install availability (prompt was captured in layout script)
     if ((window as any).__pwaPrompt) setPwaInstallable(true);
     const onInstallable = () => setPwaInstallable(true);
@@ -247,22 +287,36 @@ export default function HomePage() {
     if (!hasProfile) setMyPhone(T[lang].defaultCountryCode);
   }, [lang]);
 
-  // Polling for result
+  // Polling for result — stops when approved, declined, or expired
   useEffect(() => {
-    if (step === 'sent') {
-      pollRef.current = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/requests/${requestId}/status`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.status === 'approved') { setStep('approved'); clearInterval(pollRef.current!); }
-            else if (data.status === 'declined' || data.status === 'rejected') { setStep('declined'); clearInterval(pollRef.current!); }
-          }
-        } catch {}
-      }, 4000);
+    if (step !== 'sent') return;
+
+    function finish(status: 'approved' | 'declined' | 'expired', nextStep: Step) {
+      clearInterval(pollRef.current!);
+      const entry: HistoryEntry = { id: requestId, recipient: sentRecipient, sentAt: new Date().toISOString(), status };
+      saveHistory(entry);
+      setHistory(loadHistory());
+      setStep(nextStep);
     }
+
+    pollRef.current = setInterval(async () => {
+      // Check client-side expiry first (no network round-trip needed)
+      if (expiresAt && Date.now() > expiresAt) {
+        finish('expired', 'expired');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/requests/${requestId}/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === 'approved') finish('approved', 'approved');
+        else if (data.status === 'rejected' || data.status === 'declined') finish('declined', 'declined');
+        else if (data.status === 'expired') finish('expired', 'expired');
+      } catch {}
+    }, 2000);
+
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [step, requestId]);
+  }, [step, requestId, expiresAt, sentRecipient]);
 
   const t = T[lang];
 
@@ -353,6 +407,7 @@ export default function HomePage() {
       const data = await res.json();
       setVerifyUrl(data.verification_url);
       setRequestId(data.id);
+      setExpiresAt(data.expires_at ? new Date(data.expires_at).getTime() : Date.now() + 60_000);
 
       let recipient: string;
       if (usePlatform === 'whatsapp') {
@@ -384,6 +439,7 @@ export default function HomePage() {
     setVerifyUrl('');
     setRequestId('');
     setSentRecipient('');
+    setExpiresAt(0);
     setError('');
     setRecipientPhone(T[lang].defaultCountryCode);
     setRecipientEmail('');
@@ -661,6 +717,43 @@ export default function HomePage() {
               <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#dc2626', marginBottom: '0.5rem' }}>{t.declined}</h2>
               <p style={{ color: '#374151', fontSize: '0.95rem', marginBottom: '1.5rem' }}>{t.declinedDesc}</p>
               <button style={btnPrimary} onClick={handleReset}>{t.tryAgain}</button>
+            </div>
+          )}
+
+          {step === 'expired' && (
+            <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>⏰</div>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#d97706', marginBottom: '0.5rem' }}>{t.expired}</h2>
+              <p style={{ color: '#374151', fontSize: '0.95rem', marginBottom: '1.5rem' }}>{t.expiredDesc}</p>
+              <button style={btnPrimary} onClick={handleReset}>{t.tryAgain}</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Request History ─────────────────────────────────────────────── */}
+      {history.length > 0 && (
+        <div style={{ width: '100%', maxWidth: 420, marginTop: '1.25rem' }}>
+          <button
+            onClick={() => setShowHistory(h => !h)}
+            style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: t.dir === 'rtl' ? 'right' : 'left', color: '#6b7280', fontSize: '0.85rem', fontWeight: 600, padding: '0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <span>{showHistory ? '▾' : '▸'}</span>
+            <span>{t.historyTitle} ({history.length})</span>
+          </button>
+          {showHistory && (
+            <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              {history.map((h, i) => (
+                <div key={i} style={{ background: '#fff', borderRadius: '0.6rem', padding: '0.6rem 0.9rem', fontSize: '0.82rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', direction: t.dir }}>
+                  <span style={{ color: '#374151', fontWeight: 500 }}>{h.recipient}</span>
+                  <span style={{ color: '#9ca3af', marginInline: '0.5rem', flexShrink: 0 }}>
+                    {new Date(h.sentAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <span style={{ fontWeight: 700, color: h.status === 'approved' ? '#16a34a' : h.status === 'declined' ? '#dc2626' : '#d97706', flexShrink: 0 }}>
+                    {h.status === 'approved' ? t.statusApproved : h.status === 'declined' ? t.statusDeclined : t.statusExpired}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>
