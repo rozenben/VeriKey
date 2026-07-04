@@ -14,7 +14,8 @@ export async function GET(
          vr.status,
          vr.message_text,
          vr.expires_at,
-         u.display_name AS requester_name
+         u.display_name AS requester_name,
+         (u.phone_number_hash = vr.recipient_phone_hash) AS is_self_registration
        FROM verification_requests vr
        JOIN users u ON u.id = vr.requester_user_id
        WHERE vr.token = $1`,
@@ -43,6 +44,7 @@ export async function GET(
       requester_name: row.requester_name,
       message_text: row.message_text,
       status: row.status,
+      is_self_registration: row.is_self_registration === true,
     });
   } catch (err) {
     console.error('[GET /api/verify/:token]', err);
