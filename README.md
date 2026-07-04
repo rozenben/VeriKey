@@ -30,8 +30,8 @@ VeriKey solves a simple problem: how do you know the person on the other end of 
 **Requester (Phone A):**
 1. Open `your-app.vercel.app` in any phone browser.
 2. Enter your name, your phone number, and the recipient's phone number.
-3. Choose WhatsApp or SMS as your preferred platform — this is saved for next time.
-4. Tap **Send** — WhatsApp (or the SMS app) opens with a pre-filled message containing a unique verification link.
+3. Choose WhatsApp, SMS, or Email as your preferred platform — this is saved for next time.
+4. Tap **Send** — WhatsApp / SMS opens with a pre-filled message, or an email is sent automatically (if email is configured).
 5. The page polls every 4 seconds and shows **✅ Identity Verified** when the recipient approves.
 
 **Recipient (Phone B) — no app needed:**
@@ -48,7 +48,7 @@ No passwords. No OTPs. Just biometrics.
 
 - **Hebrew is the default language** with full RTL layout. Switch to English with the toggle button.
 - The country code (`+972` for Hebrew, `+1` for English) is pre-filled automatically.
-- Your name, phone, language, and preferred platform (WhatsApp / SMS) are saved locally and restored on your next visit.
+- Your name, phone, email, language, and preferred platform (WhatsApp / SMS / Email) are saved locally and restored on your next visit.
 
 ---
 
@@ -62,8 +62,10 @@ No passwords. No OTPs. Just biometrics.
 |  ├── /               ← Requester form    |
 |  ├── /verify/[token] ← Recipient page    |
 |  └── /api/                               |
+|       ├── config            (GET)        |
 |       ├── requests          (POST)       |
 |       ├── requests/[id]/status (GET)     |
+|       ├── send-email        (POST)       |
 |       ├── verify/[token]    (GET, POST)  |
 |       └── webauthn/                      |
 |            ├── register/options          |
@@ -83,7 +85,7 @@ No passwords. No OTPs. Just biometrics.
 | Web app + API | Next.js 14 (App Router) |
 | Biometric auth | WebAuthn / Passkeys (`@simplewebauthn/server` v10, `@simplewebauthn/browser` v10) |
 | Database | PostgreSQL (Neon or Supabase free tier recommended) |
-| Message delivery | WhatsApp deep link + SMS |
+| Message delivery | WhatsApp deep link, SMS, Email (via Resend — optional) |
 | Hosting | Vercel (free tier, HTTPS required for WebAuthn) |
 
 ---
@@ -159,6 +161,7 @@ cp .env.example web/.env.local
 | `WEBAUTHN_RP_ID` | Domain only, no protocol (e.g. `my-app.vercel.app`). Must match the domain users visit. |
 | `WEBAUTHN_RP_NAME` | App name shown in biometric prompts (e.g. `VeriKey`) |
 | `CHALLENGE_SECRET` | 32-byte hex secret — generate with `openssl rand -hex 32` |
+| `RESEND_API_KEY` | _(Optional)_ Resend API key — enables the Email sending option. Get one at [resend.com](https://resend.com). |
 
 > **Important:** `NEXT_PUBLIC_BASE_URL` is baked into the client bundle at build time. If it is wrong, verification links will point to the wrong domain and return 404. Always set it to the exact URL of your Vercel deployment before deploying.
 
@@ -196,6 +199,7 @@ npm run dev:web
 | `WEBAUTHN_RP_ID` | `my-app.vercel.app` |
 | `WEBAUTHN_RP_NAME` | `VeriKey` |
 | `CHALLENGE_SECRET` | _(output of `openssl rand -hex 32`)_ |
+| `RESEND_API_KEY` | _(Optional)_ Resend API key — enables Email as a sending option |
 
 After changing environment variables, **redeploy** for them to take effect.
 
