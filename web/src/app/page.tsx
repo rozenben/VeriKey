@@ -152,9 +152,17 @@ function buildSmsUrl(recipientPhone: string, senderName: string, verifyUrl: stri
   return `sms:${normalizePhone(recipientPhone)}?body=${encodeURIComponent(buildMsg(senderName, verifyUrl, lang))}`;
 }
 
-function buildMailtoUrl(recipientEmail: string, senderName: string, verifyUrl: string, lang: Lang, subject: string): string {
-  const body = buildMsg(senderName, verifyUrl, lang);
-  return `mailto:${recipientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+async function sendEmail(to: string, senderName: string, verifyUrl: string, lang: Lang, subject: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, senderName, verifyUrl, lang, subject }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 const PLATFORM_LABELS: Record<Platform, string> = {
@@ -166,6 +174,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 // ── Component ────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const [lang, setLang] = useState<Lang>('he');
+  const [emailEnabled, setEmailEnabled] = useState(false);
   const [hasProfile, setHasProfile] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
 
@@ -191,12 +200,22 @@ export default function HomePage() {
   const [sentRecipient, setSentRecipient] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Load saved preferences ──────────────────────────────────────────────
+  // ── Load config & saved preferences ────────────────────────────────────
   useEffect(() => {
+    fetch('/api/config').then(r => r.json()).then(cfg => {
+      const enabled = !!cfg.emailEnabled;
+      setEmailEnabled(enabled);
+      // If email was saved as preferred platform but is not available, fall back
+      if (!enabled) {
+        setPlatform(prev => prev === 'email' ? 'whatsapp' : prev);
+      }
+    }).catch(() => {});
+
     const p = loadPrefs();
     const activeLang: Lang = p.lang ?? 'he';
     setLang(activeLang);
     if (p.platform) setPlatform(p.platform);
+    // Will be corrected to 'whatsapp' if email is disabled (handled after config loads)
 
     if (p.name && p.phone) {
       setMyName(p.name);
@@ -328,21 +347,24 @@ export default function HomePage() {
       setVerifyUrl(data.verification_url);
       setRequestId(data.id);
 
-      let url: string;
       let recipient: string;
       if (usePlatform === 'whatsapp') {
-        url = buildWaUrl(recipientPhone, myName, data.verification_url, lang);
+        window.open(buildWaUrl(recipientPhone, myName, data.verification_url, lang), '_blank');
         recipient = recipientPhone;
       } else if (usePlatform === 'sms') {
-        url = buildSmsUrl(recipientPhone, myName, data.verification_url, lang);
+        window.open(buildSmsUrl(recipientPhone, myName, data.verification_url, lang), '_blank');
         recipient = recipientPhone;
       } else {
-        url = buildMailtoUrl(recipientEmail, myName, data.verification_url, lang, t.emailSubject);
+        const ok = await sendEmail(recipientEmail, myName, data.verification_url, lang, t.emailSubject);
+        if (!ok) {
+          setError(t.errorGeneric);
+          setStep('form');
+          return;
+        }
         recipient = recipientEmail;
       }
 
       setSentRecipient(recipient);
-      window.open(url, '_blank');
       setStep('sent');
     } catch {
       setError(t.errorNetwork);
@@ -501,9 +523,9 @@ export default function HomePage() {
             <>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem', color: '#111', marginTop: 0 }}>{t.formTitle}</h2>
 
-              {/* Platform toggle — 3 options */}
+              {/* Platform toggle */}
               <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1rem' }}>
-                {(['whatsapp', 'sms', 'email'] as Platform[]).map((p) => (
+                {(['whatsapp', 'sms', ...(emailEnabled ? ['email' as Platform] : [])] as Platform[]).map((p) => (
                   <button key={p} onClick={() => selectPlatform(p)} style={{
                     flex: 1, padding: '0.45rem 0.25rem', borderRadius: '0.6rem',
                     border: `2px solid ${platform === p ? '#2563eb' : '#e5e7eb'}`,
@@ -575,11 +597,11 @@ export default function HomePage() {
               </div>
               {/* Resend via other channels */}
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {(['whatsapp', 'sms', 'email'] as Platform[]).filter(p => p !== platform).map(p => (
+                {(['whatsapp', 'sms', ...(emailEnabled ? ['email' as Platform] : [])] as Platform[]).filter(p => p !== platform).map(p => (
                   <button key={p} onClick={() => {
                     if (p === 'email') {
                       if (!recipientEmail) return;
-                      window.open(buildMailtoUrl(recipientEmail, myName, verifyUrl, lang, t.emailSubject), '_blank');
+                      sendEmail(recipientEmail, myName, verifyUrl, lang, t.emailSubject);
                     } else if (p === 'whatsapp') {
                       window.open(buildWaUrl(recipientPhone, myName, verifyUrl, lang), '_blank');
                     } else {
