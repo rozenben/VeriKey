@@ -31,7 +31,9 @@ const T = {
     sendWhatsApp: 'שלח דרך WhatsApp 💬',
     sendSMS: 'שלח דרך SMS 📱',
     sendEmail: 'שלח דרך אימייל 📧',
-    messageSent: 'ההודעה נשלחה!',
+    emailSent: 'האימייל נשלח!',
+    appOpened: (app: string) => `פתח את ${app} ושלח את ההודעה`,
+    appOpenedNote: 'לאחר שתשלח — חזור לכאן. הדף יתעדכן אוטומטית.',
     waitingDesc: (recipient: string) => `ממתין ש־${recipient} יאמת…`,
     pollNote: 'הדף מתעדכן אוטומטית. הקישור תקף דקה אחת.',
     expired: 'הקישור פג תוקף',
@@ -85,7 +87,9 @@ const T = {
     sendWhatsApp: 'Send via WhatsApp 💬',
     sendSMS: 'Send via SMS 📱',
     sendEmail: 'Send via Email 📧',
-    messageSent: 'Message sent!',
+    emailSent: 'Email sent!',
+    appOpened: (app: string) => `Open ${app} and send the message`,
+    appOpenedNote: 'Once you send it, come back here — this page updates automatically.',
     waitingDesc: (recipient: string) => `Waiting for ${recipient} to verify…`,
     pollNote: 'This page updates automatically. Link is valid for 1 minute.',
     expired: 'Link Expired',
@@ -663,15 +667,19 @@ export default function HomePage() {
           {step === 'sent' && (
             <>
               <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
-                <div style={{ fontSize: '2.5rem' }}>✅</div>
-                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: '0.5rem 0 0.25rem' }}>{t.messageSent}</h2>
-                <p style={{ color: '#6b7280', fontSize: '0.9rem' }}>{t.waitingDesc(sentRecipient)}</p>
+                <div style={{ fontSize: '2.5rem' }}>{platform === 'email' ? '✅' : '📤'}</div>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: '0.5rem 0 0.25rem' }}>
+                  {platform === 'email' ? t.emailSent : t.appOpened(platform === 'whatsapp' ? 'WhatsApp' : 'SMS')}
+                </h2>
+                <p style={{ color: '#6b7280', fontSize: '0.9rem' }}>
+                  {platform === 'email' ? t.waitingDesc(sentRecipient) : t.appOpenedNote}
+                </p>
               </div>
               <div style={{ background: '#f9fafb', borderRadius: '0.75rem', padding: '0.85rem 1rem', marginBottom: '1rem', fontSize: '0.82rem', color: '#374151', wordBreak: 'break-all', direction: 'ltr', textAlign: 'left' }}>
                 <strong>{t.verifyLinkLabel}</strong><br />
                 <a href={verifyUrl} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{verifyUrl}</a>
               </div>
-              {/* Resend via other channels */}
+              {/* Resend / open via other channels */}
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 {(['whatsapp', 'sms', ...(emailEnabled ? ['email' as Platform] : [])] as Platform[]).filter(p => p !== platform).map(p => (
                   <button key={p} onClick={() => {
