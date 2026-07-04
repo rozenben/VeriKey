@@ -15,6 +15,7 @@ const T = {
     successDesc: 'האימות הביומטרי שלך הצליח.',
     selfSetupSuccessTitle: 'האימות הביומטרי הוגדר!',
     selfSetupSuccessDesc: 'מעכשיו תוכל לאשר בקשות אימות בלחיצה אחת.',
+    selfSetupSuccessDescRepeat: 'מפתח הגישה עודכן בהצלחה.',
     declinedTitle: 'דחייה',
     declinedDesc: 'דחית את בקשת האימות.',
     requesterMsg: (name: string) => `${name} מבקש לאמת את זהותך.`,
@@ -41,6 +42,7 @@ const T = {
     successDesc: 'Your biometric verification was successful.',
     selfSetupSuccessTitle: 'Biometric verification is set up!',
     selfSetupSuccessDesc: 'You can now approve verification requests in one tap.',
+    selfSetupSuccessDescRepeat: 'Your passkey has been updated successfully.',
     declinedTitle: 'Declined',
     declinedDesc: 'You declined this verification request.',
     requesterMsg: (name: string) => `${name} is asking you to confirm your identity.`,
@@ -90,6 +92,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
   const [statusMsg, setStatusMsg] = useState('');
   // Whether the phone was auto-filled from the saved profile
   const [autoFilledPhone, setAutoFilledPhone] = useState('');
+  const [firstTimeSetup, setFirstTimeSetup] = useState(false);
 
   // Suppress PWA install prompt on this page — install is only offered from the main page
   useEffect(() => {
@@ -183,6 +186,9 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
         body: JSON.stringify({ phone_number: phoneNorm, registration_response: regResponse, token }),
       });
       if (!verRes.ok) throw new Error('Registration verification failed');
+      const isFirst = !localStorage.getItem('verikey_setup_done');
+      if (isFirst) localStorage.setItem('verikey_setup_done', '1');
+      setFirstTimeSetup(isFirst);
       setFlowState('success');
     } catch (err: unknown) {
       setFlowState('error');
@@ -302,7 +308,9 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
         {requestDetails?.is_self_registration ? t.selfSetupSuccessTitle : t.successTitle}
       </h1>
       <p style={{ color: '#6b7280' }}>
-        {requestDetails?.is_self_registration ? t.selfSetupSuccessDesc : t.successDesc}
+        {requestDetails?.is_self_registration
+          ? (firstTimeSetup ? t.selfSetupSuccessDesc : t.selfSetupSuccessDescRepeat)
+          : t.successDesc}
       </p>
     </main>
   );
