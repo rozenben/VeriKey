@@ -2,18 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateAuthenticationOptions } from '@simplewebauthn/server';
 import pool from '@/lib/db';
 import { authChallengeStore } from '@/lib/challenge-store';
+import { hmacPhone } from '@/lib/phone-hash';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { phone_number_hash, token } = body as {
-      phone_number_hash: string;
+    const { phone_number, token } = body as {
+      phone_number: string;
       token: string;
     };
 
-    if (!phone_number_hash || !token) {
-      return NextResponse.json({ error: 'Missing phone_number_hash or token' }, { status: 400 });
+    if (!phone_number || !token) {
+      return NextResponse.json({ error: 'Missing phone_number or token' }, { status: 400 });
     }
+
+    const phone_number_hash = hmacPhone(phone_number);
 
     const tokenResult = await pool.query(
       `SELECT id FROM verification_requests
