@@ -8,14 +8,41 @@ Biometric identity verification for the modern age. VeriKey lets you send a veri
 
 1. [Overview](#overview)
 2. [Architecture](#architecture)
-3. [Setup](#setup)
-4. [Database Setup](#database-setup)
-5. [Environment Variables](#environment-variables)
-6. [Running Locally](#running-locally)
-7. [Deployment](#deployment)
-8. [Universal Links / App Links Configuration](#universal-links--app-links-configuration)
-9. [Testing on Real Devices](#testing-on-real-devices)
-10. [MVP Limitations & v2 Upgrade Paths](#mvp-limitations--v2-upgrade-paths)
+3. [Quick Start — Docker (Windows / Mac / Linux)](#quick-start--docker-windows--mac--linux)
+4. [Setup](#setup)
+5. [Database Setup](#database-setup)
+6. [Environment Variables](#environment-variables)
+7. [Running Locally](#running-locally)
+8. [Deployment](#deployment)
+9. [Universal Links / App Links Configuration](#universal-links--app-links-configuration)
+10. [Testing on Real Devices](#testing-on-real-devices)
+11. [MVP Limitations & v2 Upgrade Paths](#mvp-limitations--v2-upgrade-paths)
+
+---
+
+## Quick Start — Docker (Windows / Mac / Linux)
+
+The fastest way to run VeriKey locally — no Node.js required.
+
+```bash
+# 1. Clone and enter the repo
+git clone https://github.com/rozenben/VeriKey.git
+cd VeriKey
+git checkout claude/implementation-usage-guide-g01nr9
+
+# 2. Generate a secret key and paste it into docker-compose.yml
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# Open docker-compose.yml → replace CHALLENGE_SECRET value with the output above
+
+# 3. Start everything
+docker compose up --build
+```
+
+Open **http://localhost:3000** — the app is running.
+
+> Biometric authentication requires HTTPS and won't work on localhost. See [DOCKER.md](./DOCKER.md) for how to publish to the internet (free, using Vercel).
+
+**Full Docker guide → [DOCKER.md](./DOCKER.md)**
 
 ---
 
