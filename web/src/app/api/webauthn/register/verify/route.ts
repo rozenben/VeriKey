@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyRegistrationResponse } from '@simplewebauthn/server';
 import type { RegistrationResponseJSON } from '@simplewebauthn/types';
 import pool from '@/lib/db';
-import { challengeStore } from '../options/route';
+import { registrationChallengeStore } from '@/lib/challenge-store';
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const expectedChallenge = challengeStore.get(phone_number_hash);
+    const expectedChallenge = registrationChallengeStore.get(phone_number_hash);
     if (!expectedChallenge) {
       return NextResponse.json({ error: 'No challenge found. Please restart registration.' }, { status: 400 });
     }
@@ -37,12 +37,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Registration verification failed' }, { status: 400 });
     }
 
-    // Remove challenge
-    challengeStore.delete(phone_number_hash);
+    registrationChallengeStore.delete(phone_number_hash);
 
-    const { credential } = verification.registrationInfo;
+    const { credentialID, credentialPublicKey, counter } = verification.registrationInfo;
 
-    // Get user
     const userResult = await pool.query(
       'SELECT id FROM users WHERE phone_number_hash = $1',
       [phone_number_hash]
@@ -52,16 +50,14 @@ export async function POST(req: NextRequest) {
     }
     const userId: string = userResult.rows[0].id;
 
-    // Store credential (credential.id is base64url, publicKey is Uint8Array)
-    const publicKeyB64 = Buffer.from(credential.publicKey).toString('base64');
+    const publicKeyB64 = Buffer.from(credentialPublicKey).toString('base64');
     await pool.query(
       `INSERT INTO credentials (user_id, credential_id, public_key, counter)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (credential_id) DO UPDATE SET counter = EXCLUDED.counter`,
-      [userId, credential.id, publicKeyB64, credential.counter]
+      [userId, credentialID, publicKeyB64, counter]
     );
 
-    // Mark verification request as approved
     await pool.query(
       `UPDATE verification_requests
        SET status = 'approved', responded_at = NOW()

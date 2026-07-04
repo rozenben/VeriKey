@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAuthenticationOptions } from '@simplewebauthn/server';
 import pool from '@/lib/db';
-
-// In-memory challenge store keyed by phone_number_hash.
-// PRODUCTION NOTE: Replace with Redis or a DB table with TTL.
-export const authChallengeStore = new Map<string, string>();
+import { authChallengeStore } from '@/lib/challenge-store';
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,7 +15,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing phone_number_hash or token' }, { status: 400 });
     }
 
-    // Validate token exists and is not expired
     const tokenResult = await pool.query(
       `SELECT id FROM verification_requests
        WHERE token = $1 AND status = 'pending' AND expires_at > NOW()`,
@@ -28,7 +24,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Token not found or expired' }, { status: 404 });
     }
 
-    // Look up user's credentials
     const userResult = await pool.query(
       'SELECT id FROM users WHERE phone_number_hash = $1',
       [phone_number_hash]
@@ -59,7 +54,6 @@ export async function POST(req: NextRequest) {
       userVerification: 'required',
     });
 
-    // Store challenge
     authChallengeStore.set(phone_number_hash, options.challenge);
 
     return NextResponse.json(options);
