@@ -692,33 +692,18 @@ export default function HomePage() {
             </div>
           )}
 
-          {step === 'form' && passkeyStatus === 'registered' && (
-            <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: '0.85rem', padding: '0.75rem 1.1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#15803d' }}>{t.passkeyRegistered}</div>
-                <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>{t.passkeyRegisteredDesc}</div>
+          {step === 'form' && (passkeyStatus === 'registered' || passkeyStatus === 'success') && (
+            <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: '0.85rem', padding: '0.75rem 1.1rem', marginBottom: '1.25rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#15803d' }}>
+                {passkeyStatus === 'success' ? t.passkeySuccess : t.passkeyRegistered}
               </div>
-              <button onClick={handleSelfRegister} style={{ background: 'none', border: '1.5px solid #86efac', borderRadius: '0.5rem', padding: '0.3rem 0.65rem', fontSize: '0.75rem', fontWeight: 600, color: '#15803d', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                {t.passkeyReregisterBtn}
-              </button>
+              <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>{t.passkeyRegisteredDesc}</div>
             </div>
           )}
 
           {step === 'form' && passkeyStatus === 'registering' && (
             <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: '0.85rem', padding: '0.85rem 1.1rem', marginBottom: '1.25rem', textAlign: 'center', color: '#1e40af', fontSize: '0.88rem' }}>
               ⏳ {lang === 'he' ? 'ממתין לאישור ביומטרי…' : 'Waiting for biometric confirmation…'}
-            </div>
-          )}
-
-          {step === 'form' && passkeyStatus === 'success' && (
-            <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: '0.85rem', padding: '0.75rem 1.1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#15803d' }}>{t.passkeySuccess}</div>
-                <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>{t.passkeyRegisteredDesc}</div>
-              </div>
-              <button onClick={handleSelfRegister} style={{ background: 'none', border: '1.5px solid #86efac', borderRadius: '0.5rem', padding: '0.3rem 0.65rem', fontSize: '0.75rem', fontWeight: 600, color: '#15803d', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                {t.passkeyReregisterBtn}
-              </button>
             </div>
           )}
 
