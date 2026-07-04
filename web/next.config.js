@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  // 'standalone' is for Docker only — Vercel uses default output
+  // output: 'standalone',
   async headers() {
     return [
       {
