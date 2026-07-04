@@ -17,7 +17,6 @@ const T = {
   he: {
     dir: 'rtl' as const,
     appTagline: 'אימות ביומטרי אישי,',
-    appPrivacyHeader: 'מספרי הטלפון מועברים ב־HTTPS ומגובבים בשרת עם מפתח סודי — לא נשמרים בטקסט גלוי.\nאימות ביומטרי מבוסס על WebAuthn / Passkeys — ללא סיסמה.',
     // Onboarding
     onboardingTitle: 'ברוך הבא ל־VeriKey',
     onboardingSubtitle: 'הגדר פרופיל כדי לשלוח בקשות אימות',
@@ -90,7 +89,6 @@ const T = {
   en: {
     dir: 'ltr' as const,
     appTagline: 'Personal biometric authentication,',
-    appPrivacyHeader: 'Phone numbers are sent over HTTPS and hashed server-side with a secret key — never stored in plain text.\nBiometric verification uses WebAuthn / Passkeys — no password needed.',
     onboardingTitle: 'Welcome to VeriKey',
     onboardingSubtitle: 'Set up your profile to send verification requests',
     labelName: 'Your name',
@@ -877,15 +875,6 @@ export default function HomePage() {
         {/* Tagline */}
         <p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '0.25rem', direction: t.dir }}>
           {t.appTagline}
-        </p>
-
-        {/* Privacy & how-it-works summary — shown directly under the tagline */}
-        <p style={{
-          color: '#9ca3af', fontSize: '0.75rem', marginTop: '0.35rem',
-          direction: t.dir, whiteSpace: 'pre-line', lineHeight: 1.5,
-          maxWidth: 360, margin: '0.35rem auto 0',
-        }}>
-          {t.appPrivacyHeader}
         </p>
 
         {/* PWA install button — only visible when the browser exposes an install prompt */}
