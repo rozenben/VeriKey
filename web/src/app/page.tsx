@@ -25,6 +25,8 @@ const T = {
     formTitle: 'שלח בקשת אימות',
     labelRecipientPhone: 'מספר הטלפון של הנמען',
     labelRecipientEmail: 'האימייל של הנמען',
+    pickContact: 'בחר מאנשי קשר',
+    pickNumber: 'בחר מספר:',
     labelMessage: 'הודעה',
     defaultMessage: 'אנא אמת את זהותך כדי שאדע שזה באמת אתה.',
     emailSubject: 'בקשה לאימות זהות',
@@ -81,6 +83,8 @@ const T = {
     formTitle: 'Send a verification request',
     labelRecipientPhone: "Recipient's phone number",
     labelRecipientEmail: "Recipient's email",
+    pickContact: 'Pick from contacts',
+    pickNumber: 'Choose a number:',
     labelMessage: 'Message',
     defaultMessage: "Please verify your identity so I know it's really you.",
     emailSubject: 'Identity verification request',
@@ -238,6 +242,9 @@ export default function HomePage() {
   // Display label for "sent" screen — phone or email depending on platform
   const [sentRecipient, setSentRecipient] = useState('');
   const [pwaInstallable, setPwaInstallable] = useState(false);
+  const [contactsSupported, setContactsSupported] = useState(false);
+  const [numberPickList, setNumberPickList] = useState<string[]>([]);
+  const [emailPickList, setEmailPickList] = useState<string[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number>(0); // unix ms
@@ -273,6 +280,7 @@ export default function HomePage() {
     setRecipientPhone(T[activeLang].defaultCountryCode);
 
     setHistory(loadHistory());
+    setContactsSupported('contacts' in navigator && 'ContactsManager' in window);
 
     // Listen for PWA install availability (prompt was captured in layout script)
     if ((window as any).__pwaPrompt) setPwaInstallable(true);
@@ -363,6 +371,29 @@ export default function HomePage() {
     setShowProfileEditor(false);
   }
 
+  // ── Contact picker ─────────────────────────────────────────────────────
+  async function pickContact(field: 'phone' | 'email') {
+    try {
+      const props: string[] = field === 'phone' ? ['name', 'tel'] : ['name', 'email'];
+      // @ts-ignore — ContactsManager not yet in TS lib
+      const results = await navigator.contacts.select(props, { multiple: false });
+      if (!results || results.length === 0) return;
+      const contact = results[0];
+      const values: string[] = field === 'phone' ? (contact.tel ?? []) : (contact.email ?? []);
+      if (values.length === 0) return;
+      if (values.length === 1) {
+        if (field === 'phone') { setRecipientPhone(values[0]); setNumberPickList([]); }
+        else { setRecipientEmail(values[0]); setEmailPickList([]); }
+      } else {
+        // Multiple numbers/emails — show inline picker
+        if (field === 'phone') setNumberPickList(values);
+        else setEmailPickList(values);
+      }
+    } catch {
+      // User cancelled or permission denied — do nothing
+    }
+  }
+
   // ── Send ───────────────────────────────────────────────────────────────
   async function handleSend(forcePlatform?: Platform) {
     setError('');
@@ -447,6 +478,8 @@ export default function HomePage() {
     setError('');
     setRecipientPhone(T[lang].defaultCountryCode);
     setRecipientEmail('');
+    setNumberPickList([]);
+    setEmailPickList([]);
   }
 
   // ── Shared styles ──────────────────────────────────────────────────────
@@ -622,14 +655,53 @@ export default function HomePage() {
                 {/* Recipient field — phone or email depending on platform */}
                 {platform === 'email' ? (
                   <div>
-                    <label style={labelStyle}>{t.labelRecipientEmail}</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                      <label style={{ ...labelStyle, margin: 0 }}>{t.labelRecipientEmail}</label>
+                      {contactsSupported && (
+                        <button type="button" onClick={() => pickContact('email')}
+                          style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                          📋 {t.pickContact}
+                        </button>
+                      )}
+                    </div>
                     <input style={inputStyle} type="email" placeholder={t.placeholderEmail}
-                      value={recipientEmail} onChange={e => setRecipientEmail(e.target.value)} />
+                      value={recipientEmail} onChange={e => { setRecipientEmail(e.target.value); setEmailPickList([]); }} />
+                    {emailPickList.length > 1 && (
+                      <div style={{ marginTop: '0.4rem', background: '#f0f4ff', borderRadius: '0.5rem', padding: '0.5rem 0.75rem' }}>
+                        <p style={{ fontSize: '0.78rem', color: '#4338ca', fontWeight: 600, margin: '0 0 0.35rem' }}>{t.pickNumber}</p>
+                        {emailPickList.map(v => (
+                          <button key={v} type="button" onClick={() => { setRecipientEmail(v); setEmailPickList([]); }}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '0.25rem 0', fontSize: '0.875rem', color: '#1e3a8a', cursor: 'pointer', direction: 'ltr' }}>
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div>
-                    <label style={labelStyle}>{t.labelRecipientPhone}</label>
-                    <input style={inputStyle} type="tel" value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                      <label style={{ ...labelStyle, margin: 0 }}>{t.labelRecipientPhone}</label>
+                      {contactsSupported && (
+                        <button type="button" onClick={() => pickContact('phone')}
+                          style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                          📋 {t.pickContact}
+                        </button>
+                      )}
+                    </div>
+                    <input style={inputStyle} type="tel" value={recipientPhone}
+                      onChange={e => { setRecipientPhone(e.target.value); setNumberPickList([]); }} />
+                    {numberPickList.length > 1 && (
+                      <div style={{ marginTop: '0.4rem', background: '#f0f4ff', borderRadius: '0.5rem', padding: '0.5rem 0.75rem' }}>
+                        <p style={{ fontSize: '0.78rem', color: '#4338ca', fontWeight: 600, margin: '0 0 0.35rem' }}>{t.pickNumber}</p>
+                        {numberPickList.map(v => (
+                          <button key={v} type="button" onClick={() => { setRecipientPhone(v); setNumberPickList([]); }}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '0.25rem 0', fontSize: '0.875rem', color: '#1e3a8a', cursor: 'pointer', direction: 'ltr' }}>
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
