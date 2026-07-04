@@ -11,10 +11,10 @@ export async function POST(req: NextRequest) {
     const { phone_number, registration_response, token } = body as {
       phone_number: string;
       registration_response: RegistrationResponseJSON;
-      token: string;
+      token?: string;
     };
 
-    if (!phone_number || !registration_response || !token) {
+    if (!phone_number || !registration_response) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -61,12 +61,14 @@ export async function POST(req: NextRequest) {
       [userId, credentialID, publicKeyB64, counter]
     );
 
-    await pool.query(
-      `UPDATE verification_requests
-       SET status = 'approved', responded_at = NOW()
-       WHERE token = $1 AND status = 'pending'`,
-      [token]
-    );
+    if (token) {
+      await pool.query(
+        `UPDATE verification_requests
+         SET status = 'approved', responded_at = NOW()
+         WHERE token = $1 AND status = 'pending'`,
+        [token]
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

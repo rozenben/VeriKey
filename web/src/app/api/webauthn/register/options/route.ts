@@ -9,23 +9,25 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { phone_number, display_name, token } = body;
 
-    if (!phone_number || !display_name || !token) {
-      return NextResponse.json({ error: 'Missing phone_number, display_name, or token' }, { status: 400 });
+    if (!phone_number || !display_name) {
+      return NextResponse.json({ error: 'Missing phone_number or display_name' }, { status: 400 });
     }
 
     const phone_number_hash = hmacPhone(phone_number);
 
-    const tokenResult = await pool.query(
-      `SELECT recipient_phone_hash FROM verification_requests
-       WHERE token = $1 AND status = 'pending' AND expires_at > NOW()`,
-      [token]
-    );
-    if (tokenResult.rowCount === 0) {
-      return NextResponse.json({ error: 'Token not found or expired' }, { status: 404 });
-    }
-    const { recipient_phone_hash } = tokenResult.rows[0];
-    if (recipient_phone_hash && recipient_phone_hash !== phone_number_hash) {
-      return NextResponse.json({ error: 'This link was not sent to that phone number.' }, { status: 403 });
+    if (token) {
+      const tokenResult = await pool.query(
+        `SELECT recipient_phone_hash FROM verification_requests
+         WHERE token = $1 AND status = 'pending' AND expires_at > NOW()`,
+        [token]
+      );
+      if (tokenResult.rowCount === 0) {
+        return NextResponse.json({ error: 'Token not found or expired' }, { status: 404 });
+      }
+      const { recipient_phone_hash } = tokenResult.rows[0];
+      if (recipient_phone_hash && recipient_phone_hash !== phone_number_hash) {
+        return NextResponse.json({ error: 'This link was not sent to that phone number.' }, { status: 403 });
+      }
     }
 
     const upsertResult = await pool.query(
