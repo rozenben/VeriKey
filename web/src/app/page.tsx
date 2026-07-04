@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { startRegistration } from '@simplewebauthn/browser';
 
 // ── Translations ────────────────────────────────────────────────────────────
 const T = {
@@ -61,6 +62,14 @@ const T = {
     errorGeneric: 'משהו השתבש. אנא נסה שנית.',
     errorNetwork: 'שגיאת רשת. אנא נסה שנית.',
     privacy: 'מספרי הטלפון מועברים ב־HTTPS ומגובבים בשרת עם מפתח סודי — לא נשמרים בטקסט גלוי.\nאימות ביומטרי מבוסס על WebAuthn / Passkeys — ללא סיסמה.',
+    passkeySetupTitle: 'הגדרת אימות ביומטרי',
+    passkeySetupDesc: 'הגדר מפתח גישה עכשיו כדי שתוכל לאשר בקשות עתידיות בלחיצה אחת.',
+    passkeySetupBtn: 'הגדר Face ID / טביעת אצבע',
+    passkeyReregisterBtn: 'עדכן מפתח גישה',
+    passkeyRegistered: 'מפתח גישה רשום ✓',
+    passkeyRegisteredDesc: 'מכשיר זה מוגדר לאימות ביומטרי.',
+    passkeySuccess: 'מפתח הגישה הוגדר בהצלחה!',
+    passkeyError: 'ההגדרה נכשלה. אנא נסה שנית.',
     langLabel: 'EN',
     defaultCountryCode: '+972',
     sending: 'יוצר קישור אימות…',
@@ -119,6 +128,14 @@ const T = {
     errorGeneric: 'Something went wrong.',
     errorNetwork: 'Network error. Please try again.',
     privacy: 'Phone numbers are sent over HTTPS and hashed server-side with a secret key — never stored in plain text.\nBiometric verification uses WebAuthn / Passkeys — no password needed.',
+    passkeySetupTitle: 'Set up Biometric Verification',
+    passkeySetupDesc: 'Register a passkey now so you can approve future verification requests in one tap.',
+    passkeySetupBtn: 'Set up Face ID / Fingerprint',
+    passkeyReregisterBtn: 'Update passkey',
+    passkeyRegistered: 'Passkey registered ✓',
+    passkeyRegisteredDesc: 'This device is set up for biometric verification.',
+    passkeySuccess: 'Passkey set up successfully!',
+    passkeyError: 'Setup failed. Please try again.',
     langLabel: 'עברית',
     defaultCountryCode: '+1',
     sending: 'Creating verification link…',
@@ -243,6 +260,11 @@ export default function HomePage() {
   const [showHistory, setShowHistory] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number>(0); // unix ms
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Passkey self-registration
+  type PasskeyStatus = 'unknown' | 'checking' | 'unregistered' | 'registered' | 'registering' | 'success' | 'error';
+  const [passkeyStatus, setPasskeyStatus] = useState<PasskeyStatus>('unknown');
+  const [passkeyError, setPasskeyError] = useState('');
 
   // ── Load config & saved preferences ────────────────────────────────────
   useEffect(() => {
@@ -457,6 +479,45 @@ export default function HomePage() {
     }
   }
 
+  // Check passkey status whenever profile phone changes
+  useEffect(() => {
+    if (!myPhone || normalizePhone(myPhone).length < 7) return;
+    setPasskeyStatus('checking');
+    fetch('/api/webauthn/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone_number: normalizePhone(myPhone) }),
+    })
+      .then(r => r.json())
+      .then(d => setPasskeyStatus(d.registered ? 'registered' : 'unregistered'))
+      .catch(() => setPasskeyStatus('unknown'));
+  }, [myPhone, hasProfile]);
+
+  const handleSelfRegister = useCallback(async () => {
+    setPasskeyStatus('registering');
+    setPasskeyError('');
+    try {
+      const norm = normalizePhone(myPhone);
+      const optRes = await fetch('/api/webauthn/register/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone_number: norm, display_name: myName }),
+      });
+      if (!optRes.ok) throw new Error('Failed to get registration options');
+      const regResponse = await startRegistration(await optRes.json());
+      const verRes = await fetch('/api/webauthn/register/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone_number: norm, registration_response: regResponse }),
+      });
+      if (!verRes.ok) throw new Error('Registration verification failed');
+      setPasskeyStatus('success');
+    } catch (err: unknown) {
+      setPasskeyError(err instanceof Error ? err.message : t.passkeyError);
+      setPasskeyStatus('error');
+    }
+  }, [myPhone, myName, t]);
+
   function handleReset() {
     setStep('form');
     setVerifyUrl('');
@@ -619,6 +680,57 @@ export default function HomePage() {
               color: '#4338ca', cursor: 'pointer',
             }}>✏️ {t.editProfile}</button>
           </div>
+
+          {/* ── Passkey setup panel ── */}
+          {step === 'form' && passkeyStatus === 'unregistered' && (
+            <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: '0.85rem', padding: '1rem 1.1rem', marginBottom: '1.25rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1e40af', marginBottom: '0.25rem' }}>🔑 {t.passkeySetupTitle}</div>
+              <p style={{ color: '#374151', fontSize: '0.85rem', margin: '0 0 0.75rem' }}>{t.passkeySetupDesc}</p>
+              <button onClick={handleSelfRegister} style={{ ...btnPrimary, marginTop: 0, fontSize: '0.9rem', padding: '0.7rem' }}>
+                {t.passkeySetupBtn}
+              </button>
+            </div>
+          )}
+
+          {step === 'form' && passkeyStatus === 'registered' && (
+            <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: '0.85rem', padding: '0.75rem 1.1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#15803d' }}>{t.passkeyRegistered}</div>
+                <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>{t.passkeyRegisteredDesc}</div>
+              </div>
+              <button onClick={handleSelfRegister} style={{ background: 'none', border: '1.5px solid #86efac', borderRadius: '0.5rem', padding: '0.3rem 0.65rem', fontSize: '0.75rem', fontWeight: 600, color: '#15803d', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                {t.passkeyReregisterBtn}
+              </button>
+            </div>
+          )}
+
+          {step === 'form' && passkeyStatus === 'registering' && (
+            <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: '0.85rem', padding: '0.85rem 1.1rem', marginBottom: '1.25rem', textAlign: 'center', color: '#1e40af', fontSize: '0.88rem' }}>
+              ⏳ {lang === 'he' ? 'ממתין לאישור ביומטרי…' : 'Waiting for biometric confirmation…'}
+            </div>
+          )}
+
+          {step === 'form' && passkeyStatus === 'success' && (
+            <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: '0.85rem', padding: '0.75rem 1.1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#15803d' }}>{t.passkeySuccess}</div>
+                <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>{t.passkeyRegisteredDesc}</div>
+              </div>
+              <button onClick={handleSelfRegister} style={{ background: 'none', border: '1.5px solid #86efac', borderRadius: '0.5rem', padding: '0.3rem 0.65rem', fontSize: '0.75rem', fontWeight: 600, color: '#15803d', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                {t.passkeyReregisterBtn}
+              </button>
+            </div>
+          )}
+
+          {step === 'form' && passkeyStatus === 'error' && (
+            <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: '0.85rem', padding: '0.75rem 1.1rem', marginBottom: '1.25rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#dc2626', marginBottom: '0.25rem' }}>⚠️ {t.passkeyError}</div>
+              <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: '0 0 0.5rem' }}>{passkeyError}</p>
+              <button onClick={handleSelfRegister} style={{ background: 'none', border: '1.5px solid #fca5a5', borderRadius: '0.5rem', padding: '0.3rem 0.65rem', fontSize: '0.78rem', fontWeight: 600, color: '#dc2626', cursor: 'pointer' }}>
+                {lang === 'he' ? 'נסה שנית' : 'Try again'}
+              </button>
+            </div>
+          )}
 
           {step === 'form' && (
             <>
