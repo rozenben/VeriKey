@@ -4,6 +4,7 @@
     "slug": "verikey",
     "version": "1.0.0",
     "scheme": "verikey",
+    "sdkVersion": "54.0.0",
     "platforms": ["ios", "android"],
     "ios": {
       "bundleIdentifier": "com.verikey.app",
