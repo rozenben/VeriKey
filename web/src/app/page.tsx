@@ -60,7 +60,7 @@ const T = {
     errorMessage: 'יש להזין הודעה.',
     errorGeneric: 'משהו השתבש. אנא נסה שנית.',
     errorNetwork: 'שגיאת רשת. אנא נסה שנית.',
-    privacy: 'מספרי הטלפון מגובבים מקומית ולא נשמרים בטקסט גלוי.\nאימות ביומטרי מבוסס על WebAuthn / Passkeys — ללא סיסמה.',
+    privacy: 'מספרי הטלפון מועברים ב־HTTPS ומגובבים בשרת עם מפתח סודי — לא נשמרים בטקסט גלוי.\nאימות ביומטרי מבוסס על WebAuthn / Passkeys — ללא סיסמה.',
     langLabel: 'EN',
     defaultCountryCode: '+972',
     sending: 'יוצר קישור אימות…',
@@ -118,7 +118,7 @@ const T = {
     errorMessage: 'Enter a message.',
     errorGeneric: 'Something went wrong.',
     errorNetwork: 'Network error. Please try again.',
-    privacy: 'Phone numbers are hashed locally and never stored in plain text.\nBiometric verification uses WebAuthn / Passkeys — no password needed.',
+    privacy: 'Phone numbers are sent over HTTPS and hashed server-side with a secret key — never stored in plain text.\nBiometric verification uses WebAuthn / Passkeys — no password needed.',
     langLabel: 'עברית',
     defaultCountryCode: '+1',
     sending: 'Creating verification link…',
@@ -157,12 +157,6 @@ interface Prefs {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-function sha256hex(str: string): Promise<string> {
-  return crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)).then((buf) =>
-    Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('')
-  );
-}
-
 function normalizePhone(raw: string): string {
   return raw.replace(/\D/g, '');
 }
@@ -410,24 +404,18 @@ export default function HomePage() {
 
     setStep('sending');
 
-    // For email we hash the email address instead of a phone number
     const recipientIdentifier = usePlatform === 'email'
       ? recipientEmail.trim().toLowerCase()
       : normalizePhone(recipientPhone);
-
-    const [myHash, recipientHash] = await Promise.all([
-      sha256hex('verikey-salt' + myPhoneNorm),
-      sha256hex('verikey-salt' + recipientIdentifier),
-    ]);
 
     try {
       const res = await fetch('/api/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          requester_phone_hash: myHash,
+          requester_phone: myPhoneNorm,
           requester_name: myName.trim(),
-          recipient_phone_hash: recipientHash,
+          recipient_phone: recipientIdentifier,
           message_text: message.trim(),
         }),
       });

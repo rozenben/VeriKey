@@ -3,19 +3,22 @@ import { verifyAuthenticationResponse } from '@simplewebauthn/server';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/types';
 import pool from '@/lib/db';
 import { authChallengeStore } from '@/lib/challenge-store';
+import { hmacPhone } from '@/lib/phone-hash';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { phone_number_hash, token, auth_response } = body as {
-      phone_number_hash: string;
+    const { phone_number, token, auth_response } = body as {
+      phone_number: string;
       token: string;
       auth_response: AuthenticationResponseJSON;
     };
 
-    if (!phone_number_hash || !token || !auth_response) {
+    if (!phone_number || !token || !auth_response) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    const phone_number_hash = hmacPhone(phone_number);
 
     const expectedChallenge = authChallengeStore.get(phone_number_hash);
     if (!expectedChallenge) {

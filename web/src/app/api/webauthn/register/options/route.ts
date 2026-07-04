@@ -2,15 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import pool from '@/lib/db';
 import { registrationChallengeStore } from '@/lib/challenge-store';
+import { hmacPhone } from '@/lib/phone-hash';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { phone_number_hash, display_name } = body;
+    const { phone_number, display_name } = body;
 
-    if (!phone_number_hash || !display_name) {
-      return NextResponse.json({ error: 'Missing phone_number_hash or display_name' }, { status: 400 });
+    if (!phone_number || !display_name) {
+      return NextResponse.json({ error: 'Missing phone_number or display_name' }, { status: 400 });
     }
+
+    const phone_number_hash = hmacPhone(phone_number);
 
     const upsertResult = await pool.query(
       `INSERT INTO users (phone_number_hash, display_name)

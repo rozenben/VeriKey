@@ -53,21 +53,18 @@ const T = {
 
 type Lang = keyof typeof T;
 
-async function hashPhone(phone: string): Promise<string> {
-  const data = new TextEncoder().encode('verikey-salt' + phone.replace(/\D/g, ''));
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, '');
 }
 
 type RequestDetails = { requester_name: string; message_text: string; status: string };
 type FlowState = 'idle' | 'loading' | 'phone-input' | 'register' | 'authenticate' | 'success' | 'declined' | 'expired' | 'error';
 
 async function checkCredentials(phoneValue: string, tokenValue: string): Promise<'register' | 'authenticate' | 'error'> {
-  const hash = await hashPhone(phoneValue);
   const res = await fetch('/api/webauthn/auth/options', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone_number_hash: hash, token: tokenValue }),
+    body: JSON.stringify({ phone_number: normalizePhone(phoneValue), token: tokenValue }),
   });
   if (res.status === 404) return 'register';
   if (res.ok) return 'authenticate';
@@ -80,7 +77,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
   const [requestDetails, setRequestDetails] = useState<RequestDetails | null>(null);
   const [flowState, setFlowState] = useState<FlowState>('loading');
   const [phone, setPhone] = useState('');
-  const [phoneHash, setPhoneHash] = useState('');
+  const [phoneNorm, setPhoneNorm] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   // Whether the phone was auto-filled from the saved profile
@@ -117,8 +114,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
         if (savedPhone) {
           setPhone(savedPhone);
           setAutoFilledPhone(savedPhone);
-          const hash = await hashPhone(savedPhone);
-          setPhoneHash(hash);
+          setPhoneNorm(normalizePhone(savedPhone));
           const next = await checkCredentials(savedPhone, token);
           setFlowState(next === 'error' ? 'phone-input' : next);
         } else {
@@ -142,12 +138,12 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
     if (!phone.trim()) return;
     setFlowState('loading');
     try {
-      const hash = await hashPhone(phone.trim());
-      setPhoneHash(hash);
+      const norm = normalizePhone(phone.trim());
+      setPhoneNorm(norm);
       const authRes = await fetch('/api/webauthn/auth/options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number_hash: hash, token }),
+        body: JSON.stringify({ phone_number: norm, token }),
       });
       if (authRes.status === 404) setFlowState('register');
       else if (authRes.ok) setFlowState('authenticate');
@@ -165,14 +161,14 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       const optRes = await fetch('/api/webauthn/register/options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number_hash: phoneHash, display_name: phone }),
+        body: JSON.stringify({ phone_number: phoneNorm, display_name: phone }),
       });
       if (!optRes.ok) throw new Error('Failed to get registration options');
       const regResponse = await startRegistration(await optRes.json());
       const verRes = await fetch('/api/webauthn/register/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number_hash: phoneHash, registration_response: regResponse, token }),
+        body: JSON.stringify({ phone_number: phoneNorm, registration_response: regResponse, token }),
       });
       if (!verRes.ok) throw new Error('Registration verification failed');
       setFlowState('success');
@@ -180,7 +176,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       setFlowState('error');
       setErrorMsg(err instanceof Error ? err.message : 'Registration failed.');
     }
-  }, [phoneHash, phone, token, lang]);
+  }, [phoneNorm, phone, token, lang]);
 
   const handleAuthenticate = useCallback(async () => {
     setFlowState('loading');
@@ -189,14 +185,14 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       const optRes = await fetch('/api/webauthn/auth/options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number_hash: phoneHash, token }),
+        body: JSON.stringify({ phone_number: phoneNorm, token }),
       });
       if (!optRes.ok) throw new Error('Failed to get authentication options');
       const authResponse = await startAuthentication(await optRes.json());
       const verRes = await fetch('/api/webauthn/auth/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number_hash: phoneHash, token, auth_response: authResponse }),
+        body: JSON.stringify({ phone_number: phoneNorm, token, auth_response: authResponse }),
       });
       if (!verRes.ok) throw new Error('Authentication verification failed');
       setFlowState('success');
@@ -204,18 +200,18 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       setFlowState('error');
       setErrorMsg(err instanceof Error ? err.message : 'Authentication failed.');
     }
-  }, [phoneHash, token, lang]);
+  }, [phoneNorm, token, lang]);
 
   const handleDecline = useCallback(async () => {
     try {
       await fetch(`/api/verify/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reject', phone_number_hash: phoneHash }),
+        body: JSON.stringify({ action: 'reject' }),
       });
     } catch {}
     setFlowState('declined');
-  }, [token, phoneHash]);
+  }, [token]);
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   const containerStyle: React.CSSProperties = {
@@ -339,7 +335,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.75rem', background: '#f0f4ff', borderRadius: '0.75rem', padding: '0.5rem 0.9rem' }}>
           <span style={{ fontSize: '1rem' }}>📱</span>
           <span style={{ fontWeight: 600, color: '#1e3a8a', direction: 'ltr' }}>{autoFilledPhone}</span>
-          <button onClick={() => { setAutoFilledPhone(''); setPhone(''); setPhoneHash(''); setFlowState('phone-input'); }}
+          <button onClick={() => { setAutoFilledPhone(''); setPhone(''); setPhoneNorm(''); setFlowState('phone-input'); }}
             style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
             {t.notYou}
           </button>
