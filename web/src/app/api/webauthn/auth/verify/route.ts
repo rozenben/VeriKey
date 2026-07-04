@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuthenticationResponse } from '@simplewebauthn/server';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/types';
 import pool from '@/lib/db';
-import { authChallengeStore } from '../options/route';
+import { authChallengeStore } from '@/lib/challenge-store';
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,7 +22,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No challenge found. Please restart authentication.' }, { status: 400 });
     }
 
-    // Get user and credentials
     const userResult = await pool.query(
       'SELECT id FROM users WHERE phone_number_hash = $1',
       [phone_number_hash]
@@ -52,9 +51,9 @@ export async function POST(req: NextRequest) {
       expectedRPID: rpId,
       expectedOrigin: origin,
       requireUserVerification: true,
-      credential: {
-        id: credRow.credential_id,
-        publicKey: new Uint8Array(publicKeyBuffer),
+      authenticator: {
+        credentialID: credRow.credential_id,
+        credentialPublicKey: new Uint8Array(publicKeyBuffer),
         counter: Number(credRow.counter),
       },
     });
@@ -63,16 +62,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Authentication verification failed' }, { status: 400 });
     }
 
-    // Remove challenge
     authChallengeStore.delete(phone_number_hash);
 
-    // Update credential counter
     await pool.query(
       'UPDATE credentials SET counter = $1 WHERE credential_id = $2',
       [verification.authenticationInfo.newCounter, credRow.credential_id]
     );
 
-    // Mark request as approved and set responded_at
     await pool.query(
       `UPDATE verification_requests
        SET status = 'approved', responded_at = NOW()
