@@ -31,9 +31,9 @@ export async function POST(req: NextRequest) {
 
     const result = await pool.query(
       `INSERT INTO verification_requests
-         (requester_user_id, recipient_phone_hash, message_text, token)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id`,
+         (requester_user_id, recipient_phone_hash, message_text, token, expires_at)
+       VALUES ($1, $2, $3, $4, NOW() + INTERVAL '1 minute')
+       RETURNING id, expires_at`,
       [requesterId, recipient_phone_hash, message_text, token]
     );
 
@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       id: result.rows[0].id,
       token,
       verification_url: `${baseUrl}/verify/${token}`,
+      expires_at: result.rows[0].expires_at,
     });
   } catch (err) {
     console.error('[POST /api/requests]', err);
