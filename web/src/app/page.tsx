@@ -16,7 +16,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 const T = {
   he: {
     dir: 'rtl' as const,
-    appTagline: 'אימות ביומטרי אישי,',
+    appTagline: 'אימות ביומטרי אישי',
     // Onboarding
     onboardingTitle: 'ברוך הבא ל־VeriKey',
     onboardingSubtitle: 'הגדר פרופיל כדי לשלוח בקשות אימות',
@@ -86,11 +86,12 @@ const T = {
     defaultCountryCode: '+972',
     sendBlockedTitle: 'יש להגדיר אימות ביומטרי תחילה',
     sendBlockedDesc: 'לפני שליחת בקשת אימות לאחרים, עליך להגדיר את מפתח הגישה האישי שלך.',
+    errorPhoneExists: 'מספר זה כבר רשום במערכת. פתח את VeriKey במכשיר שבו הגדרת את האימות הביומטרי.',
     sending: 'יוצר קישור אימות…',
   },
   en: {
     dir: 'ltr' as const,
-    appTagline: 'Personal biometric authentication,',
+    appTagline: 'Personal biometric authentication',
     onboardingTitle: 'Welcome to VeriKey',
     onboardingSubtitle: 'Set up your profile to send verification requests',
     labelName: 'Your name',
@@ -157,6 +158,7 @@ const T = {
     defaultCountryCode: '+1',
     sendBlockedTitle: 'Set up your passkey first',
     sendBlockedDesc: 'Before sending a verification request to others, you need to set up your own passkey.',
+    errorPhoneExists: 'This number is already registered. Open VeriKey on the device where you set up biometric verification.',
     sending: 'Creating verification link…',
   },
 } as const;
@@ -549,10 +551,29 @@ export default function HomePage() {
   // ── handleSaveProfile ─────────────────────────────────────────────────────
   // Validates the onboarding form (name + phone required), saves prefs, and
   // transitions out of the onboarding screen into the main send form.
-  function handleSaveProfile() {
+  async function handleSaveProfile() {
     if (!myName.trim()) { setError(t.errorName); return; }
     if (normalizePhone(myPhone).length < 7) { setError(t.errorMyPhone); return; }
     setError('');
+    // Check whether this phone number already has a registered passkey.
+    // If so, the account belongs to someone else's device and we must not
+    // let a new local profile claim it.
+    try {
+      const res = await fetch('/api/webauthn/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone_number: normalizePhone(myPhone) }),
+      });
+      if (res.ok) {
+        const { registered } = await res.json();
+        if (registered) {
+          setError(t.errorPhoneExists);
+          return;
+        }
+      }
+    } catch {
+      // Network failure — allow proceeding; the server will enforce constraints
+    }
     savePrefs({ name: myName.trim(), phone: myPhone, email: myEmail.trim() });
     setHasProfile(true);
     setRecipientPhone(T[lang].defaultCountryCode);
@@ -1290,11 +1311,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── Footer privacy note ── */}
-      {/* Repeated from the header for users who reach the bottom of the page. */}
-      <p style={{ marginTop: '1.5rem', fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center', maxWidth: 380, direction: t.dir, whiteSpace: 'pre-line' }}>
-        {t.privacy}
-      </p>
     </main>
   );
 }

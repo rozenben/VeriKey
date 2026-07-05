@@ -93,6 +93,8 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
   // Whether the phone was auto-filled from the saved profile
   const [autoFilledPhone, setAutoFilledPhone] = useState('');
   const [firstTimeSetup, setFirstTimeSetup] = useState(false);
+  // displayName: loaded from saved prefs so the DB stores the real name, not the phone number
+  const [displayName, setDisplayName] = useState('');
 
   // Suppress PWA install prompt on this page — install is only offered from the main page
   useEffect(() => {
@@ -109,6 +111,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
         const prefs = JSON.parse(localStorage.getItem('verikey_prefs') ?? '{}');
         if (prefs.lang) setLang(prefs.lang);
         if (prefs.phone) savedPhone = prefs.phone;
+        if (prefs.name) setDisplayName(prefs.name);
       } catch {}
 
       // Load the verification request
@@ -172,7 +175,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       const optRes = await fetch('/api/webauthn/register/options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: phoneNorm, display_name: phone, token }),
+        body: JSON.stringify({ phone_number: phoneNorm, display_name: displayName || phone, token }),
       });
       if (optRes.status === 403) {
         const { error } = await optRes.json().catch(() => ({}));
