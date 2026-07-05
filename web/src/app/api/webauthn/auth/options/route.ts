@@ -9,27 +9,30 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { phone_number, token } = body as {
       phone_number: string;
-      token: string;
+      token?: string;
     };
 
-    if (!phone_number || !token) {
-      return NextResponse.json({ error: 'Missing phone_number or token' }, { status: 400 });
+    if (!phone_number) {
+      return NextResponse.json({ error: 'Missing phone_number' }, { status: 400 });
     }
 
     const phone_number_hash = hmacPhone(phone_number);
 
-    const tokenResult = await pool.query(
-      `SELECT id, recipient_phone_hash FROM verification_requests
-       WHERE token = $1 AND status = 'pending' AND expires_at > NOW()`,
-      [token]
-    );
-    if (tokenResult.rowCount === 0) {
-      return NextResponse.json({ error: 'Token not found or expired' }, { status: 404 });
-    }
-
-    const { recipient_phone_hash } = tokenResult.rows[0];
-    if (recipient_phone_hash && recipient_phone_hash !== phone_number_hash) {
-      return NextResponse.json({ error: 'This link was not sent to that phone number.' }, { status: 403 });
+    // When a token is provided this is a verification-request flow: validate the
+    // token and enforce recipient binding. Without a token it is a device sign-in.
+    if (token) {
+      const tokenResult = await pool.query(
+        `SELECT id, recipient_phone_hash FROM verification_requests
+         WHERE token = $1 AND status = 'pending' AND expires_at > NOW()`,
+        [token]
+      );
+      if (tokenResult.rowCount === 0) {
+        return NextResponse.json({ error: 'Token not found or expired' }, { status: 404 });
+      }
+      const { recipient_phone_hash } = tokenResult.rows[0];
+      if (recipient_phone_hash && recipient_phone_hash !== phone_number_hash) {
+        return NextResponse.json({ error: 'This link was not sent to that phone number.' }, { status: 403 });
+      }
     }
 
     const userResult = await pool.query(
