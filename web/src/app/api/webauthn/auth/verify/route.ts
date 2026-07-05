@@ -10,11 +10,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { phone_number, token, auth_response } = body as {
       phone_number: string;
-      token: string;
+      token?: string;
       auth_response: AuthenticationResponseJSON;
     };
 
-    if (!phone_number || !token || !auth_response) {
+    if (!phone_number || !auth_response) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -26,13 +26,14 @@ export async function POST(req: NextRequest) {
     }
 
     const userResult = await pool.query(
-      'SELECT id FROM users WHERE phone_number_hash = $1',
+      'SELECT id, display_name FROM users WHERE phone_number_hash = $1',
       [phone_number_hash]
     );
     if (userResult.rowCount === 0) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
     const userId: string = userResult.rows[0].id;
+    const display_name: string = userResult.rows[0].display_name;
 
     const credResult = await pool.query(
       'SELECT credential_id, public_key, counter FROM credentials WHERE user_id = $1 AND credential_id = $2',
@@ -72,14 +73,16 @@ export async function POST(req: NextRequest) {
       [verification.authenticationInfo.newCounter, credRow.credential_id]
     );
 
-    await pool.query(
-      `UPDATE verification_requests
-       SET status = 'approved', responded_at = NOW()
-       WHERE token = $1 AND status = 'pending'`,
-      [token]
-    );
+    if (token) {
+      await pool.query(
+        `UPDATE verification_requests
+         SET status = 'approved', responded_at = NOW()
+         WHERE token = $1 AND status = 'pending'`,
+        [token]
+      );
+    }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, display_name });
   } catch (err) {
     console.error('[POST /api/webauthn/auth/verify]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

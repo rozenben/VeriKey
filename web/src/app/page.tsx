@@ -7,6 +7,7 @@
 //           (interval handles, current requestId/recipient for stale-closure safety)
 // - useCallback: memoises a function so it isn't re-created on every render
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { startAuthentication } from '@simplewebauthn/browser';
 
 // ── Translations ─────────────────────────────────────────────────────────────
 // All user-visible strings are stored here, keyed by language ('he' / 'en').
@@ -86,7 +87,11 @@ const T = {
     defaultCountryCode: '+972',
     sendBlockedTitle: 'יש להגדיר אימות ביומטרי תחילה',
     sendBlockedDesc: 'לפני שליחת בקשת אימות לאחרים, עליך להגדיר את מפתח הגישה האישי שלך.',
-    errorPhoneExists: 'מספר זה כבר רשום במערכת. פתח את VeriKey במכשיר שבו הגדרת את האימות הביומטרי.',
+    signinTitle: 'ברוך שובך!',
+    signinDesc: 'מספר זה כבר רשום. אמת את זהותך עם מפתח הגישה שלך כדי להתחבר.',
+    signinBtn: 'התחבר עם Face ID / טביעת אצבע',
+    signinSuccess: 'התחברת בהצלחה!',
+    errorSignin: 'האימות נכשל. נסה שנית.',
     sending: 'יוצר קישור אימות…',
   },
   en: {
@@ -158,7 +163,11 @@ const T = {
     defaultCountryCode: '+1',
     sendBlockedTitle: 'Set up your passkey first',
     sendBlockedDesc: 'Before sending a verification request to others, you need to set up your own passkey.',
-    errorPhoneExists: 'This number is already registered. Open VeriKey on the device where you set up biometric verification.',
+    signinTitle: 'Welcome back!',
+    signinDesc: 'This number is already registered. Sign in with your passkey to load your profile.',
+    signinBtn: 'Sign in with Face ID / Fingerprint',
+    signinSuccess: 'Signed in successfully!',
+    errorSignin: 'Authentication failed. Please try again.',
     sending: 'Creating verification link…',
   },
 } as const;
@@ -370,6 +379,11 @@ export default function HomePage() {
   const sentRecipientRef = useRef('');
   const expiresAtRef = useRef(0);
 
+  // signinMode: true when onboarding detects the phone is already registered.
+  // The onboarding card switches to a passkey sign-in prompt instead of the
+  // normal name/phone form, allowing the user to load their profile from the DB.
+  const [signinMode, setSigninMode] = useState(false);
+
   // ── Passkey self-registration ─────────────────────────────────────────────
   // PasskeyStatus represents whether the current user's phone number already
   // has a registered passkey credential in the database:
@@ -555,9 +569,8 @@ export default function HomePage() {
     if (!myName.trim()) { setError(t.errorName); return; }
     if (normalizePhone(myPhone).length < 7) { setError(t.errorMyPhone); return; }
     setError('');
-    // Check whether this phone number already has a registered passkey.
-    // If so, the account belongs to someone else's device and we must not
-    // let a new local profile claim it.
+    // Check if the phone is already registered. If so, switch to sign-in mode
+    // so the user can authenticate and load their existing profile from the DB.
     try {
       const res = await fetch('/api/webauthn/status', {
         method: 'POST',
@@ -567,16 +580,56 @@ export default function HomePage() {
       if (res.ok) {
         const { registered } = await res.json();
         if (registered) {
-          setError(t.errorPhoneExists);
+          setSigninMode(true);
           return;
         }
       }
     } catch {
-      // Network failure — allow proceeding; the server will enforce constraints
+      // Network failure — proceed with normal onboarding
     }
     savePrefs({ name: myName.trim(), phone: myPhone, email: myEmail.trim() });
     setHasProfile(true);
     setRecipientPhone(T[lang].defaultCountryCode);
+  }
+
+  // handleSignIn: called from the sign-in prompt shown when the phone is already
+  // registered. Runs a WebAuthn assertion (no verification request token needed),
+  // then loads the user's display_name from the DB response and saves it to prefs.
+  async function handleSignIn() {
+    setError('');
+    try {
+      const norm = normalizePhone(myPhone);
+      // Step 1: get authentication options (token-free sign-in flow)
+      const optRes = await fetch('/api/webauthn/auth/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone_number: norm }),
+      });
+      if (!optRes.ok) { setError(t.errorSignin); return; }
+      const options = await optRes.json();
+
+      // Step 2: trigger the device biometric / passkey prompt
+      const authResponse = await startAuthentication(options);
+
+      // Step 3: verify the assertion server-side (token omitted → sign-in mode)
+      const verRes = await fetch('/api/webauthn/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone_number: norm, auth_response: authResponse }),
+      });
+      if (!verRes.ok) { setError(t.errorSignin); return; }
+      const verData = await verRes.json();
+
+      // Step 4: populate local profile from DB data and complete onboarding
+      const name = verData.display_name || myName.trim() || norm;
+      setMyName(name);
+      savePrefs({ name, phone: myPhone, email: myEmail.trim() });
+      setSigninMode(false);
+      setHasProfile(true);
+      setRecipientPhone(T[lang].defaultCountryCode);
+    } catch {
+      setError(t.errorSignin);
+    }
   }
 
   // ── openEditor ────────────────────────────────────────────────────────────
@@ -919,10 +972,32 @@ export default function HomePage() {
         )}
       </div>
 
+      {/* ── SIGN-IN (returning user, new device) ── */}
+      {/* Shown when onboarding detects the phone is already registered in the DB.
+          The user must authenticate with their existing passkey to load their profile. */}
+      {!hasProfile && signinMode && (
+        <div style={card}>
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ fontSize: '2rem' }}>👋</div>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0.5rem 0 0.25rem', color: '#111' }}>{t.signinTitle}</h2>
+            <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: '0 0 0.25rem', direction: 'ltr' }}>{myPhone}</p>
+            <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: 0 }}>{t.signinDesc}</p>
+          </div>
+          {error && <p style={{ color: '#dc2626', fontSize: '0.875rem', margin: '0 0 0.75rem', textAlign: 'center' }}>{error}</p>}
+          <button style={btnPrimary} onClick={handleSignIn}>{t.signinBtn}</button>
+          <button onClick={() => { setSigninMode(false); setError(''); }} style={{
+            width: '100%', marginTop: '0.75rem', background: 'transparent', border: 'none',
+            color: '#6b7280', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'underline',
+          }}>
+            {lang === 'he' ? 'חזור' : 'Back'}
+          </button>
+        </div>
+      )}
+
       {/* ── ONBOARDING ── */}
       {/* Shown on first visit (hasProfile === false). Collects name, phone, and
           optional email. On save, persists to localStorage and reveals the send form. */}
-      {!hasProfile && (
+      {!hasProfile && !signinMode && (
         <div style={card}>
           <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
             <div style={{ fontSize: '2rem' }}>👤</div>
