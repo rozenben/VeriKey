@@ -29,6 +29,8 @@ const T = {
     setupBtn: 'הגדר אימות ביומטרי',
     approveBtn: 'אשר עם Face ID / טביעת אצבע',
     declineBtn: 'דחה',
+    installApp: 'התקן אפליקציה 📲',
+    installAppDesc: 'התקן את האפליקציה כדי שתוכל להשתמש בה לאימות אחרים.',
     langLabel: 'EN',
     notYou: 'זה לא אתה?',
   },
@@ -56,6 +58,8 @@ const T = {
     setupBtn: 'Set up Biometric Verification',
     approveBtn: 'Approve with Face ID / Fingerprint',
     declineBtn: 'Decline',
+    installApp: 'Install App 📲',
+    installAppDesc: 'Install the app so you can use it to verify others.',
     langLabel: 'עברית',
     notYou: 'Not you?',
   },
@@ -95,12 +99,14 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
   const [firstTimeSetup, setFirstTimeSetup] = useState(false);
   // displayName: loaded from saved prefs so the DB stores the real name, not the phone number
   const [displayName, setDisplayName] = useState('');
+  // pwaInstallable: true when the browser has a deferred install prompt available
+  const [pwaInstallable, setPwaInstallable] = useState(false);
 
-  // Suppress PWA install prompt on this page — install is only offered from the main page
   useEffect(() => {
-    const suppress = (e: Event) => e.preventDefault();
-    window.addEventListener('beforeinstallprompt', suppress);
-    return () => window.removeEventListener('beforeinstallprompt', suppress);
+    if ((window as any).__pwaPrompt) setPwaInstallable(true);
+    const onInstallable = () => setPwaInstallable(true);
+    window.addEventListener('pwa-installable', onInstallable);
+    return () => window.removeEventListener('pwa-installable', onInstallable);
   }, []);
 
   useEffect(() => {
@@ -264,6 +270,24 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
     marginTop: '1rem',
   };
 
+  // Rendered at the bottom of every state screen when the browser supports PWA install.
+  const installBanner = pwaInstallable ? (
+    <div style={{ marginTop: '2rem', padding: '0.9rem 1rem', background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: '0.85rem', textAlign: 'center', direction: t.dir }}>
+      <p style={{ margin: '0 0 0.6rem', fontSize: '0.85rem', color: '#1e40af' }}>{t.installAppDesc}</p>
+      <button
+        onClick={async () => {
+          const prompt = (window as any).__pwaPrompt;
+          if (!prompt) return;
+          await prompt.prompt();
+          prompt.userChoice.then(() => { (window as any).__pwaPrompt = null; setPwaInstallable(false); });
+        }}
+        style={{ background: '#1e3a8a', color: '#fff', border: 'none', borderRadius: '0.5rem', padding: '0.5rem 1.25rem', fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer' }}
+      >
+        {t.installApp}
+      </button>
+    </div>
+  ) : null;
+
   const langBtn: React.CSSProperties = {
     position: 'fixed',
     top: '1rem',
@@ -282,6 +306,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
     <main style={containerStyle}>
       <button style={langBtn} onClick={toggleLang}>{t.langLabel}</button>
       <p style={{ color: '#6b7280' }}>{statusMsg || t.loading}</p>
+      {installBanner}
     </main>
   );
 
@@ -291,6 +316,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       <div style={{ fontSize: '3rem' }}>⏰</div>
       <h1 style={{ fontSize: '1.5rem', marginTop: '1rem' }}>{t.expired}</h1>
       <p style={{ color: '#6b7280' }}>{t.expiredDesc}</p>
+      {installBanner}
     </main>
   );
 
@@ -300,6 +326,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       <div style={{ fontSize: '3rem' }}>⚠️</div>
       <h1 style={{ fontSize: '1.5rem', marginTop: '1rem' }}>{t.errorTitle}</h1>
       <p style={{ color: '#6b7280' }}>{errorMsg}</p>
+      {installBanner}
     </main>
   );
 
@@ -315,6 +342,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
           ? (firstTimeSetup ? t.selfSetupSuccessDesc : t.selfSetupSuccessDescRepeat)
           : t.successDesc}
       </p>
+      {installBanner}
     </main>
   );
 
@@ -324,6 +352,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       <div style={{ fontSize: '3rem' }}>❌</div>
       <h1 style={{ fontSize: '1.5rem', marginTop: '1rem' }}>{t.declinedTitle}</h1>
       <p style={{ color: '#6b7280' }}>{t.declinedDesc}</p>
+      {installBanner}
     </main>
   );
 
@@ -402,6 +431,8 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
           <button onClick={handleDecline} style={{ ...btnStyle, background: '#f3f4f6', color: '#374151' }}>{t.declineBtn}</button>
         </>
       )}
+
+      {installBanner}
     </main>
   );
 }
