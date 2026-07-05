@@ -378,6 +378,9 @@ export default function HomePage() {
   const requestIdRef = useRef('');
   const sentRecipientRef = useRef('');
   const expiresAtRef = useRef(0);
+  // Guards finish() against being called more than once when multiple async
+  // interval ticks are in-flight simultaneously and all resolve with the same status.
+  const pollFinishedRef = useRef(false);
 
   // signinMode: true when onboarding detects the phone is already registered.
   // The onboarding card switches to a passkey sign-in prompt instead of the
@@ -494,10 +497,14 @@ export default function HomePage() {
   // localStorage quota never prevents the step transition.
   useEffect(() => {
     if (step !== 'sent') return;
+    pollFinishedRef.current = false; // reset for this new polling session
 
     // finish: clears the interval, writes the history entry, and advances the step.
-    // Reads from refs (not closure variables) to guarantee current values.
+    // The pollFinishedRef guard ensures this runs at most once even when multiple
+    // async interval ticks are in-flight and all resolve with the same status.
     function finish(status: 'approved' | 'declined' | 'expired', nextStep: Step) {
+      if (pollFinishedRef.current) return;
+      pollFinishedRef.current = true;
       clearInterval(pollRef.current!);
       const entry: HistoryEntry = {
         id: requestIdRef.current,
