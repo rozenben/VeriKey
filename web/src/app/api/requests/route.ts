@@ -92,9 +92,17 @@ export async function POST(req: NextRequest) {
 
     if (!resendRes.ok) {
       const err = await resendRes.json().catch(() => ({}));
-      console.error('[requests] Resend error:', err);
+      console.error('[requests] Resend error:', JSON.stringify(err));
       await pool.query('DELETE FROM verification_requests WHERE id = $1', [result.rows[0].id]);
-      return NextResponse.json({ error: 'Failed to send verification email' }, { status: 500 });
+      // Resend sandbox only allows sending to the account's own email address.
+      // If the error name is 'validation_error' or the message mentions 'testing',
+      // surface a clearer message to the client.
+      const resendMsg: string = err?.message ?? '';
+      const isSandboxBlock = resendMsg.toLowerCase().includes('test') || resendMsg.toLowerCase().includes('domain') || err?.name === 'validation_error';
+      const clientMsg = isSandboxBlock
+        ? 'Email could not be delivered: your Resend account is in sandbox mode and can only send to your own email address. Add a verified domain in Resend to send to others.'
+        : 'Failed to send verification email';
+      return NextResponse.json({ error: clientMsg }, { status: 500 });
     }
 
     return NextResponse.json({
