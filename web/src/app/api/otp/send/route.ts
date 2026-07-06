@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'VeriKey <onboarding@resend.dev>',
+        from: 'VeriKey <noreply@content.verikey.com>',
         to: [email],
         subject,
         text: `Your VeriKey verification code: ${code}\n\nValid for 10 minutes.`,
