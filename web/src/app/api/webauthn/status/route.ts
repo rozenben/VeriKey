@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { hmacPhone } from '@/lib/phone-hash';
+import { hmacEmail } from '@/lib/hash';
 
 export async function POST(req: NextRequest) {
   try {
-    const { phone_number } = await req.json();
-    if (!phone_number) {
-      return NextResponse.json({ error: 'Missing phone_number' }, { status: 400 });
+    const { email } = await req.json();
+    if (!email) {
+      return NextResponse.json({ error: 'Missing email' }, { status: 400 });
     }
 
-    const phone_number_hash = hmacPhone(phone_number);
+    const email_hash = hmacEmail(email);
 
     const result = await pool.query(
       `SELECT COUNT(*) AS count FROM credentials c
        JOIN users u ON u.id = c.user_id
-       WHERE u.phone_number_hash = $1`,
-      [phone_number_hash]
+       WHERE u.email_hash = $1`,
+      [email_hash]
     );
 
     const registered = parseInt(result.rows[0].count, 10) > 0;
