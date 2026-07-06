@@ -12,8 +12,9 @@ UPDATE users SET email_hash = phone_number_hash WHERE email_hash IS NULL;
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_phone_number_hash_key;
 ALTER TABLE users ADD CONSTRAINT users_email_hash_key UNIQUE (email_hash);
 
--- Rename column
+-- Rename column and drop NOT NULL so new email-only users can insert without it
 ALTER TABLE users RENAME COLUMN phone_number_hash TO phone_number_hash_deprecated;
+ALTER TABLE users ALTER COLUMN phone_number_hash_deprecated DROP NOT NULL;
 
 -- 2. Update verification_requests recipient column
 ALTER TABLE verification_requests
@@ -25,6 +26,7 @@ UPDATE verification_requests
   WHERE recipient_email_hash IS NULL;
 
 ALTER TABLE verification_requests RENAME COLUMN recipient_phone_hash TO recipient_phone_hash_deprecated;
+ALTER TABLE verification_requests ALTER COLUMN recipient_phone_hash_deprecated DROP NOT NULL;
 
 -- 3. OTP codes table
 CREATE TABLE IF NOT EXISTS otp_codes (
