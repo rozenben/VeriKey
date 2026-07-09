@@ -152,22 +152,18 @@ interface HistoryEntry {
   id: string;
   recipient: string;
   sentAt: string;
-  status: 'approved' | 'declined' | 'expired';
+  status: 'approved' | 'declined' | 'expired' | 'pending';
 }
 
-const HISTORY_KEY = 'verikey_history';
+interface DbHistoryEntry {
+  id: string;
+  recipient: string;
+  status: string;
+  created_at: string;
+  responded_at: string | null;
+}
+
 const PENDING_KEY = 'verikey_pending_request';
-
-function loadHistory(): HistoryEntry[] {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]'); } catch { return []; }
-}
-
-function saveHistory(entry: HistoryEntry) {
-  try {
-    const prev = loadHistory();
-    localStorage.setItem(HISTORY_KEY, JSON.stringify([entry, ...prev].slice(0, 10)));
-  } catch {}
-}
 
 interface Prefs {
   lang?: Lang;
@@ -225,9 +221,16 @@ export default function HomePage() {
   // PWA
   const [pwaInstallable, setPwaInstallable] = useState(false);
 
-  // History
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  // DB-backed history
+  const [dbHistory, setDbHistory] = useState<DbHistoryEntry[]>([]);
+  const [dbHistoryTotal, setDbHistoryTotal] = useState(0);
+  const [dbHistoryOffset, setDbHistoryOffset] = useState(0);
+  const [dbHistoryLoading, setDbHistoryLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+
+  // Personal area panel
+  const [showPanel, setShowPanel] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   // Polling
   const [expiresAt, setExpiresAt] = useState<number>(0);
@@ -259,8 +262,6 @@ export default function HomePage() {
       setHasProfile(true);
     }
     setMessage(T[activeLang].defaultMessage);
-    setHistory(loadHistory());
-
     // Restore a pending request that was interrupted (e.g. user navigated away via verify link)
     try {
       const pending = JSON.parse(localStorage.getItem(PENDING_KEY) ?? 'null');
@@ -305,8 +306,6 @@ export default function HomePage() {
       pollFinishedRef.current = true;
       clearInterval(pollRef.current!);
       try { localStorage.removeItem(PENDING_KEY); } catch {}
-      saveHistory({ id: requestIdRef.current, recipient: sentRecipientRef.current, sentAt: new Date().toISOString(), status });
-      setHistory(loadHistory());
       setStep(nextStep);
     }
 
@@ -568,6 +567,61 @@ export default function HomePage() {
     }
   }
 
+  // ── DB history ────────────────────────────────────────────────────────────
+  const fetchDbHistory = useCallback(async (offset = 0, append = false) => {
+    if (!apiTokenRef.current) return;
+    setDbHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/requests?limit=10&offset=${offset}`, {
+        headers: { 'Authorization': `Bearer ${apiTokenRef.current}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setDbHistory(prev => append ? [...prev, ...data.rows] : data.rows);
+      setDbHistoryTotal(data.total);
+      setDbHistoryOffset(offset + data.rows.length);
+    } catch {}
+    finally { setDbHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (hasProfile && apiToken) fetchDbHistory(0, false);
+  }, [hasProfile, apiToken, fetchDbHistory]);
+
+  // ── Logout ────────────────────────────────────────────────────────────────
+  async function handleLogout(all = false) {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiToken}`,
+        },
+        body: JSON.stringify({ all }),
+      });
+    } catch {}
+    localStorage.removeItem('verikey_prefs');
+    localStorage.removeItem(PENDING_KEY);
+    setHasProfile(false);
+    setMyName(''); setMyEmail(''); setApiToken(''); apiTokenRef.current = '';
+    setShowPanel(false); setStep('form');
+  }
+
+  // ── Delete account ────────────────────────────────────────────────────────
+  async function handleDeleteAccount() {
+    try {
+      await fetch('/api/account', {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${apiToken}` },
+      });
+    } catch {}
+    localStorage.removeItem('verikey_prefs');
+    localStorage.removeItem(PENDING_KEY);
+    setHasProfile(false);
+    setMyName(''); setMyEmail(''); setApiToken(''); apiTokenRef.current = '';
+    setShowPanel(false); setDeleteConfirm(false); setStep('form');
+  }
+
   // ── Reset send form ───────────────────────────────────────────────────────
   function handleReset() {
     try { localStorage.removeItem(PENDING_KEY); } catch {}
@@ -741,8 +795,8 @@ export default function HomePage() {
       {/* ── MAIN SEND CARD ── */}
       {hasProfile && (
         <div style={card}>
-          {/* Profile chip */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f0f4ff', borderRadius: '0.75rem', padding: '0.6rem 0.9rem', marginBottom: '1.25rem' }}>
+          {/* Profile chip — opens personal area panel */}
+          <button onClick={() => setShowPanel(true)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f0f4ff', borderRadius: '0.75rem', padding: '0.6rem 0.9rem', marginBottom: '1.25rem', width: '100%', border: 'none', cursor: 'pointer', textAlign: t.dir === 'rtl' ? 'right' : 'left' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span style={{ fontSize: '1.2rem' }}>👤</span>
               <div>
@@ -750,10 +804,8 @@ export default function HomePage() {
                 <div style={{ fontSize: '0.78rem', color: '#6b7280', direction: 'ltr' }}>{myEmail}</div>
               </div>
             </div>
-            <button onClick={openEditor} style={{ background: 'none', border: '1.5px solid #c7d2fe', borderRadius: '0.5rem', padding: '0.3rem 0.65rem', fontSize: '0.78rem', fontWeight: 600, color: '#4338ca', cursor: 'pointer' }}>
-              ✏️ {t.editProfile}
-            </button>
-          </div>
+            <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>⚙️</span>
+          </button>
 
           {/* ── Passkey setup panel ── */}
           {step === 'form' && passkeyStatus === 'unregistered' && setupStep === 'idle' && (
@@ -895,29 +947,156 @@ export default function HomePage() {
       )}
 
       {/* ── History ── */}
-      {history.length > 0 && (
+      {hasProfile && (
         <div style={{ width: '100%', maxWidth: 420, marginTop: '1.25rem' }}>
-          <button onClick={() => setShowHistory(h => !h)}
+          <button onClick={() => { setShowHistory(h => !h); if (!showHistory && dbHistory.length === 0) fetchDbHistory(0, false); }}
             style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: t.dir === 'rtl' ? 'right' : 'left', color: '#6b7280', fontSize: '0.85rem', fontWeight: 600, padding: '0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <span>{showHistory ? '▾' : '▸'}</span>
-            <span>{t.historyTitle} ({history.length})</span>
+            <span>{t.historyTitle}{dbHistoryTotal > 0 ? ` (${dbHistoryTotal})` : ''}</span>
           </button>
           {showHistory && (
             <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              {history.map((h, i) => (
-                <div key={i} style={{ background: '#fff', borderRadius: '0.6rem', padding: '0.6rem 0.9rem', fontSize: '0.82rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', direction: t.dir }}>
-                  <span style={{ color: '#374151', fontWeight: 500 }}>{h.recipient}</span>
-                  <span style={{ color: '#9ca3af', marginInline: '0.5rem', flexShrink: 0 }}>
-                    {new Date(h.sentAt).toLocaleTimeString(lang === 'he' ? 'he-IL' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  <span style={{ fontWeight: 700, color: h.status === 'approved' ? '#16a34a' : h.status === 'declined' ? '#dc2626' : '#d97706', flexShrink: 0 }}>
-                    {h.status === 'approved' ? t.statusApproved : h.status === 'declined' ? t.statusDeclined : t.statusExpired}
-                  </span>
-                </div>
-              ))}
+              {dbHistory.length === 0 && !dbHistoryLoading && (
+                <p style={{ color: '#9ca3af', fontSize: '0.82rem', textAlign: 'center', margin: '0.5rem 0' }}>{t.historyEmpty}</p>
+              )}
+              {dbHistory.map((h) => {
+                const statusColor = h.status === 'approved' ? '#16a34a' : h.status === 'rejected' ? '#dc2626' : h.status === 'expired' ? '#d97706' : '#6b7280';
+                const statusLabel = h.status === 'approved' ? t.statusApproved : h.status === 'rejected' ? t.statusDeclined : h.status === 'expired' ? t.statusExpired : '⏳';
+                return (
+                  <div key={h.id} style={{ background: '#fff', borderRadius: '0.6rem', padding: '0.6rem 0.9rem', fontSize: '0.82rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', direction: t.dir, gap: '0.5rem' }}>
+                    <span style={{ color: '#374151', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'ltr', flex: 1 }}>{h.recipient}</span>
+                    <span style={{ color: '#9ca3af', flexShrink: 0, fontSize: '0.75rem' }}>
+                      {new Date(h.created_at).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                    <span style={{ fontWeight: 700, color: statusColor, flexShrink: 0 }}>{statusLabel}</span>
+                  </div>
+                );
+              })}
+              {dbHistory.length < dbHistoryTotal && (
+                <button onClick={() => fetchDbHistory(dbHistoryOffset, true)} disabled={dbHistoryLoading}
+                  style={{ background: 'none', border: '1.5px solid #e5e7eb', borderRadius: '0.6rem', padding: '0.5rem', fontSize: '0.82rem', color: '#6b7280', cursor: 'pointer', marginTop: '0.25rem' }}>
+                  {dbHistoryLoading ? '…' : (lang === 'he' ? 'טען עוד 10' : 'Load 10 more')}
+                </button>
+              )}
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Personal Area Panel ── */}
+      {showPanel && (
+        <>
+          {/* Backdrop */}
+          <div onClick={() => { setShowPanel(false); setDeleteConfirm(false); }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200 }} />
+          {/* Panel */}
+          <div style={{
+            position: 'fixed', top: 0, right: 0, bottom: 0, width: '100%', maxWidth: 360,
+            background: '#fff', zIndex: 201, display: 'flex', flexDirection: 'column',
+            boxShadow: '-4px 0 32px rgba(0,0,0,0.15)', direction: t.dir,
+            overflowY: 'auto',
+          }}>
+            {/* Panel header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 1.25rem 1rem', borderBottom: '1px solid #f0f0f0' }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#111' }}>
+                {lang === 'he' ? 'אזור אישי' : 'Personal Area'}
+              </h2>
+              <button onClick={() => { setShowPanel(false); setDeleteConfirm(false); }}
+                style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#6b7280', lineHeight: 1 }}>✕</button>
+            </div>
+
+            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', flex: 1 }}>
+              {/* Profile info */}
+              <div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: '#9ca3af', marginBottom: '0.6rem' }}>
+                  {lang === 'he' ? 'פרופיל' : 'Profile'}
+                </div>
+                {!showProfileEditor ? (
+                  <div style={{ background: '#f9fafb', borderRadius: '0.75rem', padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#111' }}>{myName}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#6b7280', direction: 'ltr' }}>{myEmail}</div>
+                    </div>
+                    <button onClick={openEditor} style={{ background: 'none', border: '1.5px solid #e5e7eb', borderRadius: '0.5rem', padding: '0.3rem 0.65rem', fontSize: '0.78rem', fontWeight: 600, color: '#374151', cursor: 'pointer' }}>
+                      {t.editProfile}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '0.25rem' }}>{t.labelName}</label>
+                      <input style={{ ...inputStyle }} value={draftName} onChange={e => setDraftName(e.target.value)} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '0.25rem' }}>{t.labelMyEmail}</label>
+                      <input style={{ ...inputStyle }} type="email" value={draftEmail} onChange={e => setDraftEmail(e.target.value)} />
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button onClick={handleSaveEdit} style={{ ...btnPrimary, marginTop: 0, flex: 1, padding: '0.65rem' }}>{t.saveBtn}</button>
+                      <button onClick={() => setShowProfileEditor(false)} style={{ flex: 1, padding: '0.65rem', fontSize: '0.9rem', fontWeight: 600, background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '0.75rem', cursor: 'pointer' }}>{t.cancelBtn}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Passkey status */}
+              <div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: '#9ca3af', marginBottom: '0.6rem' }}>
+                  {lang === 'he' ? 'מפתח גישה' : 'Passkey'}
+                </div>
+                <div style={{ background: passkeyStatus === 'registered' || passkeyStatus === 'success' ? '#f0fdf4' : '#fef9c3', border: `1.5px solid ${passkeyStatus === 'registered' || passkeyStatus === 'success' ? '#bbf7d0' : '#fde68a'}`, borderRadius: '0.75rem', padding: '0.75rem 1rem' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.88rem', color: passkeyStatus === 'registered' || passkeyStatus === 'success' ? '#15803d' : '#92400e' }}>
+                    {passkeyStatus === 'registered' || passkeyStatus === 'success' ? `🔑 ${t.passkeyRegistered}` : `⚠️ ${lang === 'he' ? 'מפתח גישה לא מוגדר' : 'Passkey not set up'}`}
+                  </div>
+                </div>
+              </div>
+
+              {/* Logout */}
+              <div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: '#9ca3af', marginBottom: '0.6rem' }}>
+                  {lang === 'he' ? 'יציאה' : 'Sign out'}
+                </div>
+                <button onClick={() => handleLogout(false)}
+                  style={{ width: '100%', padding: '0.75rem', fontSize: '0.95rem', fontWeight: 600, background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '0.75rem', cursor: 'pointer', marginBottom: '0.5rem' }}>
+                  {lang === 'he' ? 'צא מהמכשיר הזה' : 'Sign out from this device'}
+                </button>
+                <button onClick={() => handleLogout(true)}
+                  style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                  {lang === 'he' ? 'צא מכל המכשירים' : 'Sign out everywhere'}
+                </button>
+              </div>
+
+              {/* Delete account */}
+              <div style={{ marginTop: 'auto', borderTop: '1px solid #f0f0f0', paddingTop: '1.25rem' }}>
+                {!deleteConfirm ? (
+                  <button onClick={() => setDeleteConfirm(true)}
+                    style={{ background: 'none', border: '1.5px solid #fecaca', borderRadius: '0.75rem', padding: '0.65rem', width: '100%', fontSize: '0.88rem', fontWeight: 600, color: '#dc2626', cursor: 'pointer' }}>
+                    {lang === 'he' ? '🗑️ מחק חשבון' : '🗑️ Delete account'}
+                  </button>
+                ) : (
+                  <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: '0.75rem', padding: '1rem' }}>
+                    <p style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.88rem', margin: '0 0 0.4rem' }}>
+                      {lang === 'he' ? 'פעולה זו בלתי הפיכה.' : 'This cannot be undone.'}
+                    </p>
+                    <p style={{ color: '#6b7280', fontSize: '0.8rem', margin: '0 0 0.85rem' }}>
+                      {lang === 'he' ? 'הפרופיל, האישורים הביומטריים וכל האסימונים הפעילים יימחקו לצמיתות.' : 'Your profile, passkeys, and all active tokens will be permanently removed.'}
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button onClick={handleDeleteAccount}
+                        style={{ flex: 1, padding: '0.65rem', fontSize: '0.88rem', fontWeight: 700, background: '#dc2626', color: '#fff', border: 'none', borderRadius: '0.65rem', cursor: 'pointer' }}>
+                        {lang === 'he' ? 'כן, מחק' : 'Yes, delete'}
+                      </button>
+                      <button onClick={() => setDeleteConfirm(false)}
+                        style={{ flex: 1, padding: '0.65rem', fontSize: '0.88rem', fontWeight: 600, background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '0.65rem', cursor: 'pointer' }}>
+                        {t.cancelBtn}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </main>
   );

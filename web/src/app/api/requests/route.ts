@@ -3,7 +3,49 @@ import { randomBytes } from 'crypto';
 import pool from '@/lib/db';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { hmacEmail } from '@/lib/hash';
+import { encryptEmail, decryptEmail } from '@/lib/encrypt';
 import { requireApiToken } from '@/lib/api-auth';
+
+export async function GET(req: NextRequest) {
+  try {
+    const auth = await requireApiToken(req);
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { searchParams } = new URL(req.url);
+    const limit = Math.min(parseInt(searchParams.get('limit') ?? '10', 10), 50);
+    const offset = Math.max(parseInt(searchParams.get('offset') ?? '0', 10), 0);
+
+    const result = await pool.query(
+      `SELECT id, recipient_email_encrypted, status, created_at, expires_at, responded_at
+       FROM verification_requests
+       WHERE requester_user_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [auth.userId, limit, offset]
+    );
+
+    const total = await pool.query(
+      'SELECT COUNT(*) FROM verification_requests WHERE requester_user_id = $1',
+      [auth.userId]
+    );
+
+    const rows = result.rows.map(row => ({
+      id: row.id,
+      recipient: row.recipient_email_encrypted
+        ? (() => { try { return decryptEmail(row.recipient_email_encrypted); } catch { return '(unknown)'; } })()
+        : '(unknown)',
+      status: row.status,
+      created_at: row.created_at,
+      expires_at: row.expires_at,
+      responded_at: row.responded_at,
+    }));
+
+    return NextResponse.json({ rows, total: parseInt(total.rows[0].count, 10) });
+  } catch (err) {
+    console.error('[GET /api/requests]', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,7 +63,6 @@ export async function POST(req: NextRequest) {
 
     const isSelfRegister = purpose === 'self_register';
 
-    // Fetch requester display name for the email
     const requesterResult = await pool.query(
       'SELECT display_name FROM users WHERE id = $1',
       [auth.userId]
@@ -32,6 +73,7 @@ export async function POST(req: NextRequest) {
     const senderName: string = requesterResult.rows[0].display_name;
 
     const recipientHash = hmacEmail(recipient_email);
+    const recipientEncrypted = encryptEmail(recipient_email.trim().toLowerCase());
 
     if (!await checkRateLimit(`requests:${auth.userId}`, 20, 3_600_000)) {
       return NextResponse.json({ error: 'Rate limit exceeded. Try again later.' }, { status: 429 });
@@ -43,16 +85,14 @@ export async function POST(req: NextRequest) {
 
     const result = await pool.query(
       `INSERT INTO verification_requests
-         (requester_user_id, recipient_email_hash, message_text, token, expires_at)
-       VALUES ($1, $2, $3, $4, NOW() + ($5 * INTERVAL '1 minute'))
+         (requester_user_id, recipient_email_hash, recipient_email_encrypted, message_text, token, expires_at)
+       VALUES ($1, $2, $3, $4, $5, NOW() + ($6 * INTERVAL '1 minute'))
        RETURNING id, expires_at`,
-      [auth.userId, recipientHash, message_text, token, isSelfRegister ? 5 : 1440]
+      [auth.userId, recipientHash, recipientEncrypted, message_text, token, isSelfRegister ? 5 : 1440]
     );
 
-    // Send verification email server-side
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
-      // Roll back the request we just inserted so we don't leave orphaned rows
       await pool.query('DELETE FROM verification_requests WHERE id = $1', [result.rows[0].id]);
       return NextResponse.json({ error: 'Email service not configured' }, { status: 503 });
     }
@@ -94,9 +134,6 @@ export async function POST(req: NextRequest) {
       const err = await resendRes.json().catch(() => ({}));
       console.error('[requests] Resend error:', JSON.stringify(err));
       await pool.query('DELETE FROM verification_requests WHERE id = $1', [result.rows[0].id]);
-      // Resend sandbox only allows sending to the account's own email address.
-      // If the error name is 'validation_error' or the message mentions 'testing',
-      // surface a clearer message to the client.
       const resendMsg: string = err?.message ?? '';
       const isSandboxBlock = resendMsg.toLowerCase().includes('test') || resendMsg.toLowerCase().includes('domain') || err?.name === 'validation_error';
       const clientMsg = isSandboxBlock
