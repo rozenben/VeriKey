@@ -4,6 +4,7 @@ import { generateRegistrationOptions } from '@simplewebauthn/server';
 import pool from '@/lib/db';
 import { registrationChallengeStore } from '@/lib/challenge-store';
 import { hmacEmail } from '@/lib/hash';
+import { encryptEmail } from '@/lib/encrypt';
 
 function hashOtp(code: string): string {
   const secret = process.env.IDENTIFIER_HMAC_SECRET ?? process.env.PHONE_HMAC_SECRET ?? '';
@@ -57,12 +58,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const email_encrypted = encryptEmail(email.trim().toLowerCase());
     const upsertResult = await pool.query(
-      `INSERT INTO users (email_hash, display_name, email)
+      `INSERT INTO users (email_hash, display_name, email_encrypted)
        VALUES ($1, $2, $3)
-       ON CONFLICT (email_hash) DO UPDATE SET display_name = EXCLUDED.display_name, email = EXCLUDED.email
+       ON CONFLICT (email_hash) DO UPDATE SET display_name = EXCLUDED.display_name, email_encrypted = EXCLUDED.email_encrypted
        RETURNING id`,
-      [email_hash, display_name, email.trim().toLowerCase()]
+      [email_hash, display_name, email_encrypted]
     );
     const userId: string = upsertResult.rows[0].id;
 
