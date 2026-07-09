@@ -263,7 +263,7 @@ export default function HomePage() {
 
     // Restore a pending request that was interrupted (e.g. user navigated away via verify link)
     try {
-      const pending = JSON.parse(sessionStorage.getItem(PENDING_KEY) ?? 'null');
+      const pending = JSON.parse(localStorage.getItem(PENDING_KEY) ?? 'null');
       if (pending?.requestId && pending?.sentRecipient) {
         setRequestId(pending.requestId);
         requestIdRef.current = pending.requestId;
@@ -304,7 +304,7 @@ export default function HomePage() {
       if (pollFinishedRef.current) return;
       pollFinishedRef.current = true;
       clearInterval(pollRef.current!);
-      try { sessionStorage.removeItem(PENDING_KEY); } catch {}
+      try { localStorage.removeItem(PENDING_KEY); } catch {}
       saveHistory({ id: requestIdRef.current, recipient: sentRecipientRef.current, sentAt: new Date().toISOString(), status });
       setHistory(loadHistory());
       setStep(nextStep);
@@ -560,7 +560,7 @@ export default function HomePage() {
       setRequestId(data.id);
       setExpiresAt(expMs);
       setSentRecipient(recipient);
-      try { sessionStorage.setItem(PENDING_KEY, JSON.stringify({ requestId: data.id, sentRecipient: recipient, expiresAt: expMs })); } catch {}
+      try { localStorage.setItem(PENDING_KEY, JSON.stringify({ requestId: data.id, sentRecipient: recipient, expiresAt: expMs })); } catch {}
       setStep('sent');
     } catch {
       setError(t.errorNetwork);
@@ -570,7 +570,7 @@ export default function HomePage() {
 
   // ── Reset send form ───────────────────────────────────────────────────────
   function handleReset() {
-    try { sessionStorage.removeItem(PENDING_KEY); } catch {}
+    try { localStorage.removeItem(PENDING_KEY); } catch {}
     setStep('form');
     setRequestId('');
     setSentRecipient('');
