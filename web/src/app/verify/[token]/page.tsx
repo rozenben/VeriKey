@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
+import { useRouter } from 'next/navigation';
 
 // ── Translations ─────────────────────────────────────────────────────────────
 const T = {
@@ -85,6 +86,7 @@ type FlowState = 'idle' | 'loading' | 'email-input' | 'register' | 'register-otp
 
 export default function VerifyPage({ params }: { params: { token: string } }) {
   const { token } = params;
+  const router = useRouter();
   const [lang, setLang] = useState<Lang>('he');
   const [requestDetails, setRequestDetails] = useState<RequestDetails | null>(null);
   const [flowState, setFlowState] = useState<FlowState>('loading');
@@ -145,6 +147,13 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
     }
     init();
   }, [token]);
+
+  // Redirect home after success or decline so the user lands back on the main screen
+  useEffect(() => {
+    if (flowState !== 'success' && flowState !== 'declined') return;
+    const id = setTimeout(() => router.push('/'), 2000);
+    return () => clearTimeout(id);
+  }, [flowState, router]);
 
   const t = T[lang];
   function toggleLang() { setLang(l => l === 'he' ? 'en' : 'he'); }

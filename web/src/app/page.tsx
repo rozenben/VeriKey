@@ -156,6 +156,7 @@ interface HistoryEntry {
 }
 
 const HISTORY_KEY = 'verikey_history';
+const PENDING_KEY = 'verikey_pending_request';
 
 function loadHistory(): HistoryEntry[] {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]'); } catch { return []; }
@@ -259,6 +260,21 @@ export default function HomePage() {
     }
     setMessage(T[activeLang].defaultMessage);
     setHistory(loadHistory());
+
+    // Restore a pending request that was interrupted (e.g. user navigated away via verify link)
+    try {
+      const pending = JSON.parse(sessionStorage.getItem(PENDING_KEY) ?? 'null');
+      if (pending?.requestId && pending?.sentRecipient) {
+        setRequestId(pending.requestId);
+        requestIdRef.current = pending.requestId;
+        setSentRecipient(pending.sentRecipient);
+        sentRecipientRef.current = pending.sentRecipient;
+        setExpiresAt(pending.expiresAt ?? 0);
+        expiresAtRef.current = pending.expiresAt ?? 0;
+        setStep('sent');
+      }
+    } catch {}
+
     if ((window as any).__pwaPrompt) setPwaInstallable(true);
     const onInstallable = () => setPwaInstallable(true);
     window.addEventListener('pwa-installable', onInstallable);
@@ -288,6 +304,7 @@ export default function HomePage() {
       if (pollFinishedRef.current) return;
       pollFinishedRef.current = true;
       clearInterval(pollRef.current!);
+      try { sessionStorage.removeItem(PENDING_KEY); } catch {}
       saveHistory({ id: requestIdRef.current, recipient: sentRecipientRef.current, sentAt: new Date().toISOString(), status });
       setHistory(loadHistory());
       setStep(nextStep);
@@ -538,9 +555,12 @@ export default function HomePage() {
         return;
       }
       const data = await res.json();
+      const expMs = data.expires_at ? new Date(data.expires_at).getTime() : Date.now() + 86_400_000;
+      const recipient = recipientEmail.trim().toLowerCase();
       setRequestId(data.id);
-      setExpiresAt(data.expires_at ? new Date(data.expires_at).getTime() : Date.now() + 86_400_000);
-      setSentRecipient(recipientEmail.trim().toLowerCase());
+      setExpiresAt(expMs);
+      setSentRecipient(recipient);
+      try { sessionStorage.setItem(PENDING_KEY, JSON.stringify({ requestId: data.id, sentRecipient: recipient, expiresAt: expMs })); } catch {}
       setStep('sent');
     } catch {
       setError(t.errorNetwork);
@@ -550,6 +570,7 @@ export default function HomePage() {
 
   // ── Reset send form ───────────────────────────────────────────────────────
   function handleReset() {
+    try { sessionStorage.removeItem(PENDING_KEY); } catch {}
     setStep('form');
     setRequestId('');
     setSentRecipient('');
