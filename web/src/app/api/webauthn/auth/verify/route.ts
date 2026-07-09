@@ -86,9 +86,12 @@ export async function POST(req: NextRequest) {
       const code_hash = hashOtp(String(otp));
       await pool.query(
         `UPDATE otp_codes SET used = true
-         WHERE email_hash = $1 AND code_hash = $2
-           AND purpose = 'signin' AND used = false
-         ORDER BY created_at DESC LIMIT 1`,
+         WHERE id = (
+           SELECT id FROM otp_codes
+           WHERE email_hash = $1 AND code_hash = $2
+             AND purpose = 'signin' AND used = false
+           ORDER BY created_at DESC LIMIT 1
+         )`,
         [email_hash, code_hash]
       );
     }
