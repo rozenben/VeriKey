@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'VeriKey <noreply@content.verikey.com>',
+        from: 'VeriKey <noreply@verikey.app>',
         to: [to],
         subject,
         text: bodyText,
