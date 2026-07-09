@@ -15,7 +15,7 @@ export async function GET(
          vr.message_text,
          vr.expires_at,
          u.display_name AS requester_name,
-         (u.phone_number_hash = vr.recipient_phone_hash) AS is_self_registration
+         (u.email_hash = vr.recipient_email_hash) AS is_self_registration
        FROM verification_requests vr
        JOIN users u ON u.id = vr.requester_user_id
        WHERE vr.token = $1`,

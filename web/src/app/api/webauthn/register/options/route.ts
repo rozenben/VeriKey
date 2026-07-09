@@ -1,41 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHmac } from 'crypto';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import pool from '@/lib/db';
 import { registrationChallengeStore } from '@/lib/challenge-store';
-import { hmacPhone } from '@/lib/phone-hash';
+import { hmacEmail } from '@/lib/hash';
+
+function hashOtp(code: string): string {
+  const secret = process.env.IDENTIFIER_HMAC_SECRET ?? process.env.PHONE_HMAC_SECRET ?? '';
+  return createHmac('sha256', secret).update(code).digest('hex');
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { phone_number, display_name, token } = body;
+    const { email, display_name, otp, token } = body;
 
-    if (!phone_number || !display_name) {
-      return NextResponse.json({ error: 'Missing phone_number or display_name' }, { status: 400 });
+    if (!email || !display_name || !otp) {
+      return NextResponse.json({ error: 'Missing email, display_name, or otp' }, { status: 400 });
     }
 
-    const phone_number_hash = hmacPhone(phone_number);
+    const email_hash = hmacEmail(email);
+
+    // Verify OTP before issuing WebAuthn challenge
+    const code_hash = hashOtp(String(otp));
+    const otpResult = await pool.query(
+      `SELECT id, attempts FROM otp_codes
+       WHERE email_hash = $1 AND code_hash = $2
+         AND purpose = 'register' AND used = false AND expires_at > NOW()
+       ORDER BY created_at DESC LIMIT 1`,
+      [email_hash, code_hash]
+    );
+    if (otpResult.rowCount === 0) {
+      await pool.query(
+        `UPDATE otp_codes SET attempts = attempts + 1
+         WHERE email_hash = $1 AND purpose = 'register' AND used = false AND expires_at > NOW()`,
+        [email_hash]
+      );
+      return NextResponse.json({ error: 'Invalid or expired OTP' }, { status: 400 });
+    }
+    if (otpResult.rows[0].attempts >= 3) {
+      return NextResponse.json({ error: 'Too many incorrect attempts. Request a new code.' }, { status: 400 });
+    }
 
     if (token) {
       const tokenResult = await pool.query(
-        `SELECT recipient_phone_hash FROM verification_requests
+        `SELECT recipient_email_hash FROM verification_requests
          WHERE token = $1 AND status = 'pending' AND expires_at > NOW()`,
         [token]
       );
       if (tokenResult.rowCount === 0) {
         return NextResponse.json({ error: 'Token not found or expired' }, { status: 404 });
       }
-      const { recipient_phone_hash } = tokenResult.rows[0];
-      if (recipient_phone_hash && recipient_phone_hash !== phone_number_hash) {
-        return NextResponse.json({ error: 'This link was not sent to that phone number.' }, { status: 403 });
+      const { recipient_email_hash } = tokenResult.rows[0];
+      if (recipient_email_hash && recipient_email_hash !== email_hash) {
+        return NextResponse.json({ error: 'This link was not sent to that email address.' }, { status: 403 });
       }
     }
 
     const upsertResult = await pool.query(
-      `INSERT INTO users (phone_number_hash, display_name)
-       VALUES ($1, $2)
-       ON CONFLICT (phone_number_hash) DO UPDATE SET display_name = EXCLUDED.display_name
+      `INSERT INTO users (email_hash, display_name, email)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (email_hash) DO UPDATE SET display_name = EXCLUDED.display_name, email = EXCLUDED.email
        RETURNING id`,
-      [phone_number_hash, display_name]
+      [email_hash, display_name, email.trim().toLowerCase()]
     );
     const userId: string = upsertResult.rows[0].id;
 
@@ -55,7 +82,7 @@ export async function POST(req: NextRequest) {
       rpID: rpId,
       rpName,
       userID: new TextEncoder().encode(userId),
-      userName: phone_number_hash,
+      userName: email_hash,
       userDisplayName: display_name,
       excludeCredentials,
       authenticatorSelection: {
@@ -64,7 +91,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    registrationChallengeStore.set(phone_number_hash, options.challenge);
+    registrationChallengeStore.set(email_hash, options.challenge);
 
     return NextResponse.json(options);
   } catch (err) {

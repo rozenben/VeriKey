@@ -1,46 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHmac } from 'crypto';
 import { generateAuthenticationOptions } from '@simplewebauthn/server';
 import pool from '@/lib/db';
 import { authChallengeStore } from '@/lib/challenge-store';
-import { hmacPhone } from '@/lib/phone-hash';
+import { hmacEmail } from '@/lib/hash';
+
+function hashOtp(code: string): string {
+  const secret = process.env.IDENTIFIER_HMAC_SECRET ?? process.env.PHONE_HMAC_SECRET ?? '';
+  return createHmac('sha256', secret).update(code).digest('hex');
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { phone_number, token } = body as {
-      phone_number: string;
+    const { email, otp, token } = body as {
+      email: string;
+      otp?: string;
       token?: string;
     };
 
-    if (!phone_number) {
-      return NextResponse.json({ error: 'Missing phone_number' }, { status: 400 });
+    if (!email) {
+      return NextResponse.json({ error: 'Missing email' }, { status: 400 });
     }
 
-    const phone_number_hash = hmacPhone(phone_number);
+    const email_hash = hmacEmail(email);
 
-    // When a token is provided this is a verification-request flow: validate the
-    // token and enforce recipient binding. Without a token it is a device sign-in.
+    // OTP required for new-device sign-in (no token = sign-in flow, not verification approval)
+    if (!token && otp) {
+      const code_hash = hashOtp(String(otp));
+      const otpResult = await pool.query(
+        `SELECT id, attempts FROM otp_codes
+         WHERE email_hash = $1 AND code_hash = $2
+           AND purpose = 'signin' AND used = false AND expires_at > NOW()
+         ORDER BY created_at DESC LIMIT 1`,
+        [email_hash, code_hash]
+      );
+      if (otpResult.rowCount === 0) {
+        await pool.query(
+          `UPDATE otp_codes SET attempts = attempts + 1
+           WHERE email_hash = $1 AND purpose = 'signin' AND used = false AND expires_at > NOW()`,
+          [email_hash]
+        );
+        return NextResponse.json({ error: 'Invalid or expired OTP' }, { status: 400 });
+      }
+      if (otpResult.rows[0].attempts >= 3) {
+        return NextResponse.json({ error: 'Too many incorrect attempts. Request a new code.' }, { status: 400 });
+      }
+    }
+
     if (token) {
       const tokenResult = await pool.query(
-        `SELECT id, recipient_phone_hash FROM verification_requests
+        `SELECT id, recipient_email_hash FROM verification_requests
          WHERE token = $1 AND status = 'pending' AND expires_at > NOW()`,
         [token]
       );
       if (tokenResult.rowCount === 0) {
         return NextResponse.json({ error: 'Token not found or expired' }, { status: 404 });
       }
-      const { recipient_phone_hash } = tokenResult.rows[0];
-      if (recipient_phone_hash && recipient_phone_hash !== phone_number_hash) {
-        return NextResponse.json({ error: 'This link was not sent to that phone number.' }, { status: 403 });
+      const { recipient_email_hash } = tokenResult.rows[0];
+      if (recipient_email_hash && recipient_email_hash !== email_hash) {
+        return NextResponse.json({ error: 'This link was not sent to that email address.' }, { status: 403 });
       }
     }
 
     const userResult = await pool.query(
-      'SELECT id FROM users WHERE phone_number_hash = $1',
-      [phone_number_hash]
+      'SELECT id FROM users WHERE email_hash = $1',
+      [email_hash]
     );
     if (userResult.rowCount === 0) {
-      return NextResponse.json({ error: 'No credentials found for this phone number' }, { status: 404 });
+      return NextResponse.json({ error: 'No account found for this email' }, { status: 404 });
     }
     const userId: string = userResult.rows[0].id;
 
@@ -49,7 +77,7 @@ export async function POST(req: NextRequest) {
       [userId]
     );
     if (credResult.rowCount === 0) {
-      return NextResponse.json({ error: 'No credentials found for this phone number' }, { status: 404 });
+      return NextResponse.json({ error: 'No credentials found for this email' }, { status: 404 });
     }
 
     const allowCredentials = credResult.rows.map((row: { credential_id: string }) => ({
@@ -65,7 +93,7 @@ export async function POST(req: NextRequest) {
       userVerification: 'required',
     });
 
-    authChallengeStore.set(phone_number_hash, options.challenge);
+    authChallengeStore.set(email_hash, options.challenge);
 
     return NextResponse.json(options);
   } catch (err) {
