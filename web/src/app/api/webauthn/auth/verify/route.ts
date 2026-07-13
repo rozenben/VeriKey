@@ -6,7 +6,7 @@ import pool from '@/lib/db';
 import { authChallengeStore } from '@/lib/challenge-store';
 import { hmacEmail } from '@/lib/hash';
 import { issueApiToken } from '@/lib/api-auth';
-import { sendResultEmail } from '@/app/api/verify/[token]/route';
+import { sendResultEmail } from '@/lib/verify-email';
 
 function hashOtp(code: string): string {
   const secret = process.env.IDENTIFIER_HMAC_SECRET ?? process.env.PHONE_HMAC_SECRET ?? '';
