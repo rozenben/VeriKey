@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { requireApiToken } from '@/lib/api-auth';
+import { decryptEmail } from '@/lib/encrypt';
 
 export async function GET(
   req: NextRequest,
@@ -15,7 +16,8 @@ export async function GET(
     const { id } = params;
 
     const result = await pool.query(
-      `SELECT status, responded_at, expires_at FROM verification_requests
+      `SELECT status, responded_at, expires_at, recipient_answer, recipient_note_encrypted
+       FROM verification_requests
        WHERE id = $1 AND requester_user_id = $2`,
       [id, auth.userId]
     );
@@ -25,10 +27,18 @@ export async function GET(
     }
 
     const row = result.rows[0];
+
+    let recipient_note: string | null = null;
+    if (row.recipient_note_encrypted) {
+      try { recipient_note = decryptEmail(row.recipient_note_encrypted); } catch {}
+    }
+
     return NextResponse.json({
       status: row.status,
       responded_at: row.responded_at,
       expires_at: row.expires_at,
+      recipient_answer: row.recipient_answer ?? null,
+      recipient_note,
     });
   } catch (err) {
     console.error('[GET /api/requests/:id/status]', err);

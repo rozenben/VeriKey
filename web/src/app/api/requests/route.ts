@@ -16,7 +16,8 @@ export async function GET(req: NextRequest) {
     const offset = Math.max(parseInt(searchParams.get('offset') ?? '0', 10), 0);
 
     const result = await pool.query(
-      `SELECT id, recipient_email_encrypted, status, created_at, expires_at, responded_at
+      `SELECT id, recipient_email_encrypted, status, created_at, expires_at, responded_at,
+              recipient_answer, recipient_note_encrypted
        FROM verification_requests
        WHERE requester_user_id = $1
        ORDER BY created_at DESC
@@ -38,6 +39,10 @@ export async function GET(req: NextRequest) {
       created_at: row.created_at,
       expires_at: row.expires_at,
       responded_at: row.responded_at,
+      recipient_answer: row.recipient_answer ?? null,
+      recipient_note: row.recipient_note_encrypted
+        ? (() => { try { return decryptEmail(row.recipient_note_encrypted); } catch { return null; } })()
+        : null,
     }));
 
     return NextResponse.json({ rows, total: parseInt(total.rows[0].count, 10) });
