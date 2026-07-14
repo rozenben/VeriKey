@@ -146,6 +146,7 @@ psql "$DATABASE_URL" -f db/migrations/003_email_otp_redesign.sql
 psql "$DATABASE_URL" -f db/migrations/004_cleanup_triggers_and_encrypt_email.sql
 psql "$DATABASE_URL" -f db/migrations/005_recipient_email_encrypted_and_account_ops.sql
 psql "$DATABASE_URL" -f db/migrations/006_recipient_answer.sql
+psql "$DATABASE_URL" -f db/migrations/007_whatsapp_identity.sql
 ```
 
 Or paste each file's contents into the Neon / Supabase SQL editor.

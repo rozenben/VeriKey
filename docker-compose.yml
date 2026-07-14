@@ -14,6 +14,7 @@ services:
       - ./db/migrations/004_cleanup_triggers_and_encrypt_email.sql:/docker-entrypoint-initdb.d/004_cleanup_triggers_and_encrypt_email.sql
       - ./db/migrations/005_recipient_email_encrypted_and_account_ops.sql:/docker-entrypoint-initdb.d/005_recipient_email_encrypted_and_account_ops.sql
       - ./db/migrations/006_recipient_answer.sql:/docker-entrypoint-initdb.d/006_recipient_answer.sql
+      - ./db/migrations/007_whatsapp_identity.sql:/docker-entrypoint-initdb.d/007_whatsapp_identity.sql
     ports:
       - "5432:5432"
     healthcheck:

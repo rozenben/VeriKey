@@ -158,7 +158,7 @@ Vercel gives you a free HTTPS URL, which is required for biometric authenticatio
 1. Go to **https://neon.tech** and sign up for free
 2. Click **New Project**, name it `verikey`, click **Create**
 3. Copy the **Connection string** (looks like `postgresql://user:pass@host/verikey`)
-4. Click the **SQL Editor** tab, then run all migrations in order — paste and run each file from `db/migrations/` (001 through 006)
+4. Click the **SQL Editor** tab, then run all migrations in order — paste and run each file from `db/migrations/` (001 through 007)
 
 ### Step 2 — Deploy to Vercel
 
