@@ -3,7 +3,6 @@
   "private": true,
   "workspaces": ["web"],
   "scripts": {
-    "dev:web": "npm run dev --workspace=web",
-    "dev:mobile": "cd mobile && npm start"
+    "dev": "npm run dev --workspace=web"
   }
 }
