@@ -9,6 +9,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql
+      - ./db/migrations/002_extend_expiry.sql:/docker-entrypoint-initdb.d/002_extend_expiry.sql
+      - ./db/migrations/003_email_otp_redesign.sql:/docker-entrypoint-initdb.d/003_email_otp_redesign.sql
+      - ./db/migrations/004_cleanup_triggers_and_encrypt_email.sql:/docker-entrypoint-initdb.d/004_cleanup_triggers_and_encrypt_email.sql
+      - ./db/migrations/005_recipient_email_encrypted_and_account_ops.sql:/docker-entrypoint-initdb.d/005_recipient_email_encrypted_and_account_ops.sql
+      - ./db/migrations/006_recipient_answer.sql:/docker-entrypoint-initdb.d/006_recipient_answer.sql
     ports:
       - "5432:5432"
     healthcheck:
@@ -30,6 +35,9 @@ services:
       WEBAUTHN_RP_ID: localhost
       WEBAUTHN_RP_NAME: VeriKey
       CHALLENGE_SECRET: change_this_to_a_random_64_char_hex_string
+      IDENTIFIER_HMAC_SECRET: change_this_to_a_random_64_char_hex_string
+      EMAIL_ENCRYPTION_KEY: change_this_to_a_random_64_char_hex_string
+      RESEND_API_KEY: ""
     depends_on:
       db:
         condition: service_healthy

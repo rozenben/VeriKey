@@ -40,28 +40,29 @@ Run the full VeriKey stack locally with Docker (no Node.js installation required
 ```bash
 git clone https://github.com/rozenben/VeriKey.git
 cd VeriKey
-git checkout claude/implementation-usage-guide-g01nr9
 ```
 
-### Step 2 — Generate a secret key
+### Step 2 — Generate secret keys
+
+Run this three times to generate three independent secrets:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Copy the output string.
+### Step 3 — Set your secrets in docker-compose.yml
 
-### Step 3 — Set your secret in docker-compose.yml
-
-Open `docker-compose.yml` in any text editor (Notepad is fine).
-
-Find this line:
+Open `docker-compose.yml` in any text editor and replace the placeholder values for these three variables:
 
 ```yaml
 CHALLENGE_SECRET: change_this_to_a_random_64_char_hex_string
+IDENTIFIER_HMAC_SECRET: change_this_to_a_random_64_char_hex_string
+EMAIL_ENCRYPTION_KEY: change_this_to_a_random_64_char_hex_string
 ```
 
-Replace the value with the string you copied in Step 2. Save the file.
+Each should get its own unique generated string. Save the file.
+
+> `RESEND_API_KEY` can be left empty for local testing — OTP emails and result emails won't be sent, but all other functionality works.
 
 ### Step 4 — Start the stack
 
@@ -75,7 +76,7 @@ docker compose up --build
 |---|---|
 | Downloads images | Pulls PostgreSQL 16 and Node.js 20 (~400 MB, one-time) |
 | Builds the app | Compiles the Next.js app inside a container (~2–3 min) |
-| Starts the database | Runs PostgreSQL and automatically applies the SQL migrations |
+| Starts the database | Runs PostgreSQL and automatically applies all SQL migrations |
 | Starts the web server | Serves the app on port 3000 |
 
 When you see this, it is ready:
@@ -103,6 +104,9 @@ All settings are in `docker-compose.yml` under the `web` service's `environment`
 | `WEBAUTHN_RP_ID` | `localhost` | Must match the domain users visit — change when deploying |
 | `WEBAUTHN_RP_NAME` | `VeriKey` | Name shown in the biometric prompt |
 | `CHALLENGE_SECRET` | *(you set this)* | 32-byte hex string — keep this secret |
+| `IDENTIFIER_HMAC_SECRET` | *(you set this)* | 32-byte hex string for hashing email addresses — **changing this invalidates all accounts** |
+| `EMAIL_ENCRYPTION_KEY` | *(you set this)* | 32-byte hex string for encrypting stored emails |
+| `RESEND_API_KEY` | *(empty)* | Resend API key — required for OTP and result emails in production |
 
 For production, do **not** put secrets in `docker-compose.yml`. Use environment variables or a secrets manager instead.
 
@@ -154,7 +158,7 @@ Vercel gives you a free HTTPS URL, which is required for biometric authenticatio
 1. Go to **https://neon.tech** and sign up for free
 2. Click **New Project**, name it `verikey`, click **Create**
 3. Copy the **Connection string** (looks like `postgresql://user:pass@host/verikey`)
-4. Click the **SQL Editor** tab, paste the contents of `db/migrations/001_initial.sql`, and click **Run**
+4. Click the **SQL Editor** tab, then run all migrations in order — paste and run each file from `db/migrations/` (001 through 006)
 
 ### Step 2 — Deploy to Vercel
 
@@ -169,29 +173,14 @@ Vercel gives you a free HTTPS URL, which is required for biometric authenticatio
 | `NEXT_PUBLIC_BASE_URL` | `https://your-app.vercel.app` *(fill in after first deploy)* |
 | `WEBAUTHN_RP_ID` | `your-app.vercel.app` *(same domain, no https://)* |
 | `WEBAUTHN_RP_NAME` | `VeriKey` |
-| `CHALLENGE_SECRET` | The hex string you generated earlier |
+| `CHALLENGE_SECRET` | A 32-byte hex string (`openssl rand -hex 32`) |
+| `IDENTIFIER_HMAC_SECRET` | A 32-byte hex string (`openssl rand -hex 32`) |
+| `EMAIL_ENCRYPTION_KEY` | A 32-byte hex string (`openssl rand -hex 32`) |
+| `RESEND_API_KEY` | Your Resend API key (required for OTP and result emails) |
 
 5. Click **Deploy**
 
 After the first deploy, Vercel gives you a URL like `https://verikey-abc123.vercel.app`. Go back to the environment variables, update `NEXT_PUBLIC_BASE_URL` and `WEBAUTHN_RP_ID` with this URL, then click **Redeploy**.
-
-### Step 3 — Update the mobile app to point to your live URL
-
-Open (or create) `mobile/.env`:
-
-```env
-EXPO_PUBLIC_API_URL=https://your-app.vercel.app
-```
-
-Rebuild the mobile app if needed (`expo start` picks this up automatically in development).
-
-### Step 4 — Verify everything works
-
-Open `https://your-app.vercel.app` on your phone.
-
-- The landing page loads
-- Going to `/verify/<any-token>` shows the verification UI
-- Tapping **Approve with Face ID / Fingerprint** triggers the OS biometric prompt
 
 ---
 
@@ -202,9 +191,8 @@ Open `https://your-app.vercel.app` on your phone.
 | Web app loads | ✅ | ✅ |
 | API endpoints work | ✅ | ✅ |
 | Database saves data | ✅ | ✅ |
+| OTP and result emails | ❌ Requires RESEND_API_KEY | ✅ |
 | Biometric prompt (Face ID / Fingerprint) | ❌ Requires HTTPS | ✅ |
-| Mobile app sends verification links | ✅ (points to localhost) | ✅ |
-| Universal Links open app directly | ❌ | ✅ (after configuration) |
 
 ---
 
