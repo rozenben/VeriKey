@@ -1,54 +1,63 @@
 # VeriKey
 
-אימות זהות ביומטרי — ללא התקנת אפליקציה.
-VeriKey lets you send a verification link to anyone — they tap it, authenticate with Face ID or Fingerprint, and you get real-time confirmation it's really them.
+Biometric identity verification — no app install required.
+
+VeriKey lets you send a verification link to anyone. The recipient taps it, logs in with Face ID or Fingerprint (passkey), answers your question, and you get real-time confirmation it's really them — plus their answer and an optional note.
 
 ---
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Quick Start — Docker](#quick-start--docker)
-4. [Setup](#setup)
+2. [How it works](#how-it-works)
+3. [Architecture](#architecture)
+4. [Quick Start — Docker](#quick-start--docker)
 5. [Database Setup](#database-setup)
 6. [Environment Variables](#environment-variables)
 7. [Running Locally](#running-locally)
 8. [Deployment — Vercel](#deployment--vercel)
-9. [MVP Limitations & v2 Upgrade Paths](#mvp-limitations--v2-upgrade-paths)
+9. [Known Limitations](#known-limitations)
 
 ---
 
 ## Overview
 
-VeriKey solves a simple problem: how do you know the person on the other end of a text or call is who they say they are?
+**Problem:** How do you know the person texting or calling you is really who they claim to be?
 
-**Everything runs in the browser — no app installation required on either side.**
+**Solution:** Send them a VeriKey link. They authenticate biometrically in their browser, answer your question (yes/no), and you get the result — including a fraud alert if they say no while someone else claims to be them.
 
-### How it works
+Everything runs in the browser. No app installation required on either side.
 
-**Requester (Phone A):**
-1. Open `your-app.vercel.app` in any phone browser.
-2. Enter your name, your phone number, and the recipient's phone number.
-3. Choose WhatsApp, SMS, or Email as your preferred platform — this is saved for next time.
-4. Tap **Send** — WhatsApp / SMS opens with a pre-filled message, or an email is sent automatically (if email is configured).
-5. The page polls every 4 seconds and shows **✅ Identity Verified** when the recipient approves.
+---
 
-**Recipient (Phone B) — no app needed:**
-1. Tap the verification link in WhatsApp or SMS.
-2. The link opens in the browser.
-3. Enter your phone number.
-4. **First time:** tap "Set up Biometric Verification" → authenticate with Face ID / Fingerprint → a passkey is created.
-5. **Returning:** tap "Approve with Face ID / Fingerprint" → authenticate instantly.
-6. You see "Identity Confirmed" — the requester is notified in real time.
+## How it works
 
-No passwords. No OTPs. Just biometrics.
+### Requester (you)
 
-### Language & preferences
+1. Open the app and sign up with your email address.
+2. Receive a one-time code via email to confirm your address.
+3. Register a passkey (Face ID / Fingerprint) on your device.
+4. On the home screen: enter the recipient's email and your verification question (e.g. *"Did you just ask me to send you $500?"*).
+5. Tap **Send** — an email is sent to the recipient with the verification link.
+6. The page polls every few seconds. When the recipient completes verification you see the result: ✅ Confirmed YES, 🚨 Said NO (suspicious), or declined.
 
-- **Hebrew is the default language** with full RTL layout. Switch to English with the toggle button.
-- The country code (`+972` for Hebrew, `+1` for English) is pre-filled automatically.
-- Your name, phone, email, language, and preferred platform (WhatsApp / SMS / Email) are saved locally and restored on your next visit.
+### Recipient
+
+1. Tap the link in the email.
+2. See the requester's name and verification question.
+3. Answer **Yes** or **No** and optionally add a note.
+4. Enter your email, receive a one-time code, and authenticate with your passkey.
+   - **First time:** set up a passkey during this step.
+   - **Returning:** authenticate instantly with the existing passkey.
+5. Done — the requester is notified immediately.
+
+### Result outcomes
+
+| Recipient answered | Status shown to requester |
+|---|---|
+| Yes + biometric | ✅ Identity Verified — Confirmed |
+| No + biometric | 🚨 Identity Verified — SUSPICIOUS (fraud warning sent) |
+| Declined (no biometric) | ⚪ Verification Declined |
 
 ---
 
@@ -59,14 +68,17 @@ No passwords. No OTPs. Just biometrics.
 |            VeriKey (web/)                |
 |                                          |
 |  Next.js 14 (App Router)                 |
-|  ├── /               ← Requester form    |
+|  ├── /               ← Requester home    |
 |  ├── /verify/[token] ← Recipient page    |
 |  └── /api/                               |
-|       ├── config            (GET)        |
-|       ├── requests          (POST)       |
+|       ├── auth/                          |
+|       │    └── me              (GET)     |
+|       ├── account              (DELETE)  |
+|       ├── config               (GET)     |
+|       ├── otp/send             (POST)    |
+|       ├── requests             (GET,POST)|
 |       ├── requests/[id]/status (GET)     |
-|       ├── send-email        (POST)       |
-|       ├── verify/[token]    (GET, POST)  |
+|       ├── verify/[token]       (GET,POST)|
 |       └── webauthn/                      |
 |            ├── register/options          |
 |            ├── register/verify           |
@@ -76,74 +88,67 @@ No passwords. No OTPs. Just biometrics.
 |  PostgreSQL                              |
 |  ├── users                               |
 |  ├── credentials                         |
-|  └── verification_requests              |
+|  ├── verification_requests              |
+|  ├── otp_codes                           |
+|  └── api_tokens                          |
 +------------------------------------------+
 ```
 
 | Layer | Technology |
 |---|---|
 | Web app + API | Next.js 14 (App Router) |
-| Biometric auth | WebAuthn / Passkeys (`@simplewebauthn/server` v10, `@simplewebauthn/browser` v10) |
-| Database | PostgreSQL (Neon or Supabase free tier recommended) |
-| Message delivery | WhatsApp deep link, SMS, Email (via Resend — optional) |
-| Hosting | Vercel (free tier, HTTPS required for WebAuthn) |
+| Biometric auth | WebAuthn / Passkeys (`@simplewebauthn/server` v10) |
+| Email delivery | [Resend](https://resend.com) |
+| Database | PostgreSQL (Neon or Supabase free tier) |
+| Hosting | Vercel |
 
 ---
 
 ## Quick Start — Docker
 
-Run the entire stack locally with no Node.js install required.
+Run the full stack locally with no Node.js install required.
 
 ```bash
 # 1. Clone the repo
 git clone https://github.com/rozenben/VeriKey.git
 cd VeriKey
 
-# 2. Generate a secret key
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# Open docker-compose.yml → replace CHALLENGE_SECRET with the output above
+# 2. Generate secrets
+openssl rand -hex 32   # → CHALLENGE_SECRET
+openssl rand -hex 32   # → IDENTIFIER_HMAC_SECRET
+openssl rand -hex 32   # → EMAIL_ENCRYPTION_KEY
 
-# 3. Start everything
+# 3. Open docker-compose.yml and paste the generated values into the
+#    corresponding environment variables.
+
+# 4. Start everything
 docker compose up --build
 ```
 
 Open **http://localhost:3000**
 
-> Biometric authentication requires HTTPS and won't work on plain localhost. See [DOCKER.md](./DOCKER.md) for how to expose the app to the internet using Vercel (free).
+> WebAuthn requires HTTPS. Biometric registration won't work on plain `http://localhost`. See [DOCKER.md](./DOCKER.md) for options to expose the app via a public HTTPS URL (e.g. Vercel or a tunnel).
 
 **Full Docker guide → [DOCKER.md](./DOCKER.md)**
 
 ---
 
-## Setup
-
-### Prerequisites
-
-- **Node.js 20+**
-- **npm 9+**
-- **PostgreSQL** — [Neon](https://neon.tech) or [Supabase](https://supabase.com) free tier recommended
-
-### Install dependencies
-
-```bash
-# From the repo root
-npm install
-```
-
----
-
 ## Database Setup
 
-1. Create a PostgreSQL database on Neon or Supabase.
-2. Copy the connection string (`postgresql://user:password@host:5432/verikey`).
-3. Run the migrations in order:
+1. Create a PostgreSQL database (Neon or Supabase free tier recommended).
+2. Copy the connection string.
+3. Run all migrations **in order**:
 
 ```bash
 psql "$DATABASE_URL" -f db/migrations/001_initial.sql
 psql "$DATABASE_URL" -f db/migrations/002_extend_expiry.sql
+psql "$DATABASE_URL" -f db/migrations/003_email_otp_redesign.sql
+psql "$DATABASE_URL" -f db/migrations/004_cleanup_triggers_and_encrypt_email.sql
+psql "$DATABASE_URL" -f db/migrations/005_recipient_email_encrypted_and_account_ops.sql
+psql "$DATABASE_URL" -f db/migrations/006_recipient_answer.sql
 ```
 
-Or paste each file's contents into the Supabase / Neon SQL editor.
+Or paste each file's contents into the Neon / Supabase SQL editor.
 
 ---
 
@@ -154,76 +159,76 @@ cp .env.example web/.env.local
 # Edit web/.env.local
 ```
 
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `NEXT_PUBLIC_BASE_URL` | Your public URL — **must match your Vercel deployment URL exactly** (e.g. `https://my-app.vercel.app`) |
-| `WEBAUTHN_RP_ID` | Domain only, no protocol (e.g. `my-app.vercel.app`). Must match the domain users visit. |
-| `WEBAUTHN_RP_NAME` | App name shown in biometric prompts (e.g. `VeriKey`) |
-| `CHALLENGE_SECRET` | 32-byte hex secret — generate with `openssl rand -hex 32` |
-| `RESEND_API_KEY` | _(Optional)_ Resend API key — enables the Email sending option. Get one at [resend.com](https://resend.com). |
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | ✅ | PostgreSQL connection string |
+| `NEXT_PUBLIC_BASE_URL` | ✅ | Your public URL, e.g. `https://my-app.vercel.app`. Must match your deployment URL exactly — it is baked into the client bundle at build time and used to generate verification links. |
+| `WEBAUTHN_RP_ID` | ✅ | Domain only, no protocol, e.g. `my-app.vercel.app`. Must match the domain users visit. Use `localhost` for local dev. |
+| `WEBAUTHN_RP_NAME` | ✅ | App name shown in biometric prompts, e.g. `VeriKey`. |
+| `CHALLENGE_SECRET` | ✅ | 32-byte hex secret for signing WebAuthn challenges. Generate: `openssl rand -hex 32` |
+| `IDENTIFIER_HMAC_SECRET` | ✅ | 32-byte hex secret for HMAC-hashing emails (used as stable, non-reversible identifiers). Generate: `openssl rand -hex 32`. **Changing this invalidates all existing accounts.** |
+| `EMAIL_ENCRYPTION_KEY` | ✅ | 32-byte hex key for AES-256 encrypting stored email addresses. Generate: `openssl rand -hex 32` |
+| `RESEND_API_KEY` | ✅ | API key from [resend.com](https://resend.com). Required for OTP delivery and verification emails. |
 
-> **Important:** `NEXT_PUBLIC_BASE_URL` is baked into the client bundle at build time. If it is wrong, verification links will point to the wrong domain and return 404. Always set it to the exact URL of your Vercel deployment before deploying.
-
-> **Security note:** `WEBAUTHN_RP_ID` must exactly match the domain users visit. For local dev use `localhost` and `http://localhost:3000`.
+> **Note:** `PHONE_HMAC_SECRET` is accepted as a fallback alias for `IDENTIFIER_HMAC_SECRET` during migration from older deployments.
 
 ---
 
 ## Running Locally
 
 ```bash
-cp .env.example web/.env.local
-# Edit web/.env.local with your DATABASE_URL, WEBAUTHN_RP_ID=localhost, etc.
+# Install dependencies
+npm install
 
+# Set up environment
+cp .env.example web/.env.local
+# Edit web/.env.local — set WEBAUTHN_RP_ID=localhost, NEXT_PUBLIC_BASE_URL=http://localhost:3000
+
+# Run migrations (requires psql)
+psql "$DATABASE_URL" -f db/migrations/001_initial.sql
+# ... repeat for 002–006
+
+# Start the dev server
 npm run dev:web
 # → http://localhost:3000
 ```
+
+> Biometric registration requires HTTPS. For local testing use a browser that supports WebAuthn on localhost (Chrome and Firefox do), or expose the app via a tunnel.
 
 ---
 
 ## Deployment — Vercel
 
-1. Push your code to GitHub.
-2. Import the repo at [vercel.com](https://vercel.com/new).
+1. Push the repo to GitHub.
+2. Import it at [vercel.com/new](https://vercel.com/new).
 3. Set **Root Directory** to `web`.
 4. Add all environment variables (Settings → Environment Variables).
-5. Make sure **Deployment Protection** (Settings → Deployment Protection) is **off** so the app is publicly accessible.
+5. Turn off **Deployment Protection** (Settings → Deployment Protection) so the app is publicly accessible.
 6. Deploy.
+7. Run all six database migrations against your production database.
 
-### Vercel environment variable checklist
+### Environment variable checklist
 
-| Variable | Example value |
+| Variable | Example |
 |---|---|
 | `DATABASE_URL` | `postgresql://user:pass@host/db` |
-| `NEXT_PUBLIC_BASE_URL` | `https://my-app.vercel.app` ← your exact Vercel URL |
+| `NEXT_PUBLIC_BASE_URL` | `https://my-app.vercel.app` |
 | `WEBAUTHN_RP_ID` | `my-app.vercel.app` |
 | `WEBAUTHN_RP_NAME` | `VeriKey` |
-| `CHALLENGE_SECRET` | _(output of `openssl rand -hex 32`)_ |
-| `RESEND_API_KEY` | _(Optional)_ Resend API key — enables Email as a sending option |
+| `CHALLENGE_SECRET` | _(32-byte hex)_ |
+| `IDENTIFIER_HMAC_SECRET` | _(32-byte hex)_ |
+| `EMAIL_ENCRYPTION_KEY` | _(32-byte hex)_ |
+| `RESEND_API_KEY` | _(from resend.com)_ |
 
-After changing environment variables, **redeploy** for them to take effect.
+After changing any environment variable, **trigger a new deployment** for it to take effect.
 
 ---
 
-## MVP Limitations & v2 Upgrade Paths
+## Known Limitations
 
-### Current Limitations
-
-| Area | MVP Approach | Issue |
+| Area | Current approach | Impact |
 |---|---|---|
-| Challenge storage | In-memory `Map` | Lost on server restart; does not scale horizontally |
+| Challenge storage | In-memory `Map` | Lost on server restart; won't scale horizontally — use Redis for production |
 | Rate limiting | In-memory `Map` | Same as above |
-| Requester identity | Name + hashed phone in localStorage | No verified auth; can be spoofed |
-| Phone matching | Recipient enters number manually | No automatic lookup from requester's contacts |
-| Notifications | Polling every 4 s | Inefficient; misses updates if tab is closed |
-
-### v2 Upgrade Paths
-
-- **Challenge + rate-limit storage → Redis** with TTL. Drop-in replacement for the in-memory Maps.
-- **Push notifications → Web Push API or Expo Push**. Replace polling with a server push when a request is approved.
-- **Requester authentication → passkey login**. Store requester profile in DB with a verified phone number.
-- **Automatic phone lookup** — skip the phone input step for returning recipients.
-- **Request history** — display past requests with live status on the home screen.
-- **Credential backup** — passkey sync via iCloud Keychain / Google Password Manager.
-- **Audit log** — append-only log of all verification events for compliance.
-- **Expiry cron** — `DELETE FROM verification_requests WHERE created_at < NOW() - INTERVAL '30 days'` via pg_cron or a Vercel Cron Job.
+| Passkey per device | Each device registers its own passkey | Signing in from a new device requires re-authentication via email OTP to link the new passkey |
+| No push notifications | Requester polls every 4 s | Tab must stay open; missed if closed before recipient responds |
