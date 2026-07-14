@@ -6,6 +6,7 @@ import pool from '@/lib/db';
 import { authChallengeStore } from '@/lib/challenge-store';
 import { hmacEmail } from '@/lib/hash';
 import { issueApiToken } from '@/lib/api-auth';
+import { sendResultEmail } from '@/lib/verify-email';
 
 function hashOtp(code: string): string {
   const secret = process.env.IDENTIFIER_HMAC_SECRET ?? process.env.PHONE_HMAC_SECRET ?? '';
@@ -97,12 +98,24 @@ export async function POST(req: NextRequest) {
     }
 
     if (token) {
+      // Fetch stored answer + note before updating so we can pass them to the email
+      const answerRow = await pool.query(
+        `SELECT recipient_answer, recipient_note_encrypted FROM verification_requests
+         WHERE token = $1 AND status = 'pending'`,
+        [token]
+      );
+      const storedAnswer = answerRow.rows[0]?.recipient_answer ?? null;
+      const storedNote = answerRow.rows[0]?.recipient_note_encrypted ?? null;
+
       await pool.query(
         `UPDATE verification_requests
          SET status = 'approved', responded_at = NOW()
          WHERE token = $1 AND status = 'pending'`,
         [token]
       );
+
+      // Fire result email to requester (non-blocking)
+      sendResultEmail(token, 'approved', storedAnswer, storedNote).catch(() => {});
     }
 
     // Issue API token for sign-in flows (not verification approvals)

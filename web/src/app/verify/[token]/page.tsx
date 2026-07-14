@@ -11,18 +11,20 @@ const T = {
     loading: 'טוען…',
     expired: 'הקישור פג תוקף',
     expiredDesc: 'קישור האימות פג תוקף. בקש מהשולח לשלוח קישור חדש.',
+    answerExpiredDesc: 'חלון הזמן למתן תשובה פג. בקש מהשולח לשלוח קישור חדש.',
     errorTitle: 'משהו השתבש',
-    successTitle: 'זהות אומתה',
-    successDesc: 'האימות הביומטרי שלך הצליח.',
+    successTitle: 'זהות אומתה ✅',
+    successDesc: 'תגובתך נרשמה ואומתה ביומטרית.',
+    successYes: 'אישרת את הפעולה.',
+    successNo: 'דחית את הפעולה. הודעת אזהרה נשלחה לשולח.',
     selfSetupSuccessTitle: 'האימות הביומטרי הוגדר!',
     selfSetupSuccessDesc: 'מעכשיו תוכל לאשר בקשות אימות בלחיצה אחת.',
     selfSetupSuccessDescRepeat: 'מפתח הגישה עודכן בהצלחה.',
     declinedTitle: 'דחייה',
     declinedDesc: 'דחית את בקשת האימות.',
-    requesterMsg: (name: string) => `${name} מבקש לאמת את זהותך.`,
+    requesterQuestion: (name: string) => `${name} שואל אותך:`,
     selfSetupTitle: 'הגדרת VeriKey',
     selfSetupDesc: 'לחץ כדי להגדיר אימות ביומטרי במכשיר זה.',
-    reasonLabel: 'סיבה:',
     emailPrompt: 'הזן את כתובת האימייל שלך לאימות:',
     emailPlaceholder: 'you@example.com',
     labelName: 'השם שלך',
@@ -34,31 +36,39 @@ const T = {
     otpPlaceholder: '123456',
     noPasskeyDesc: 'אין לך עדיין מפתח גישה. הגדר אימות ביומטרי לאישור בקשות עתידיות בקלות.',
     setupBtn: 'הגדר אימות ביומטרי',
-    approveBtn: 'אשר עם Face ID / טביעת אצבע',
-    declineBtn: 'דחה',
+    answerYes: '✅ כן, זה אני',
+    answerNo: '❌ לא, לא עשיתי זאת',
+    answerPrompt: 'ענה בכנות — האימות הביומטרי יוכיח שהתגובה היא שלך.',
+    notePlaceholder: 'הוסף הערה (אופציונלי)…',
+    verifyBtn: 'אמת עם Face ID / טביעת אצבע',
+    declineBtn: 'דחה (ללא אימות)',
     installApp: 'התקן אפליקציה 📲',
     installAppDesc: 'התקן את האפליקציה כדי שתוכל להשתמש בה לאימות אחרים.',
     langLabel: 'EN',
     notYou: 'זה לא אתה?',
     resendOtp: 'שלח שוב',
+    timeLimitNote: (min: number) => `יש לענות תוך ${min} דקות מרגע פתיחת הקישור.`,
+    timeLeft: (s: number) => `נותרו ${s} שניות`,
   },
   en: {
     dir: 'ltr' as const,
     loading: 'Loading…',
     expired: 'Link Expired',
     expiredDesc: 'This verification link has expired. Please ask the requester to send a new one.',
+    answerExpiredDesc: 'The answer time window has expired. Please ask the requester to send a new link.',
     errorTitle: 'Something went wrong',
-    successTitle: 'Identity Confirmed',
-    successDesc: 'Your biometric verification was successful.',
+    successTitle: 'Identity Confirmed ✅',
+    successDesc: 'Your response has been recorded and verified biometrically.',
+    successYes: 'You confirmed the action.',
+    successNo: 'You denied the action. A warning has been sent to the requester.',
     selfSetupSuccessTitle: 'Biometric verification is set up!',
     selfSetupSuccessDesc: 'You can now approve verification requests in one tap.',
     selfSetupSuccessDescRepeat: 'Your passkey has been updated successfully.',
     declinedTitle: 'Declined',
     declinedDesc: 'You declined this verification request.',
-    requesterMsg: (name: string) => `${name} is asking you to confirm your identity.`,
+    requesterQuestion: (name: string) => `${name} is asking:`,
     selfSetupTitle: 'Set up VeriKey',
     selfSetupDesc: 'Tap below to register your biometric on this device.',
-    reasonLabel: 'Reason:',
     emailPrompt: 'Enter your email address to verify:',
     emailPlaceholder: 'you@example.com',
     labelName: 'Your name',
@@ -70,19 +80,36 @@ const T = {
     otpPlaceholder: '123456',
     noPasskeyDesc: "You don't have a passkey yet. Set up biometric verification to approve requests quickly in the future.",
     setupBtn: 'Set up Biometric Verification',
-    approveBtn: 'Approve with Face ID / Fingerprint',
-    declineBtn: 'Decline',
+    answerYes: '✅ Yes, that was me',
+    answerNo: '❌ No, I didn\'t do that',
+    answerPrompt: 'Answer honestly — your biometric will prove this response is from you.',
+    notePlaceholder: 'Add a note (optional)…',
+    verifyBtn: 'Verify with Face ID / Fingerprint',
+    declineBtn: 'Decline (no biometric)',
     installApp: 'Install App 📲',
     installAppDesc: 'Install the app so you can use it to verify others.',
     langLabel: 'עברית',
     notYou: 'Not you?',
     resendOtp: 'Resend',
+    timeLimitNote: (min: number) => `You have ${min} minutes from opening this link to answer.`,
+    timeLeft: (s: number) => `${s} seconds remaining`,
   },
 } as const;
 
 type Lang = keyof typeof T;
-type RequestDetails = { requester_name: string; message_text: string; status: string; is_self_registration: boolean };
-type FlowState = 'idle' | 'loading' | 'email-input' | 'register' | 'register-otp-sent' | 'authenticate' | 'success' | 'declined' | 'expired' | 'error';
+type RequestDetails = {
+  requester_name: string;
+  message_text: string;
+  status: string;
+  is_self_registration: boolean;
+  answer_deadline: string;
+  answer_expired: boolean;
+};
+type FlowState =
+  | 'idle' | 'loading' | 'email-input'
+  | 'answer'           // new: pick yes/no + optional note
+  | 'register' | 'register-otp-sent' | 'authenticate'
+  | 'success' | 'declined' | 'expired' | 'answer-expired' | 'error';
 
 export default function VerifyPage({ params }: { params: { token: string } }) {
   const { token } = params;
@@ -99,6 +126,15 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
   const [otpCode, setOtpCode] = useState('');
   const [pwaInstallable, setPwaInstallable] = useState(false);
 
+  // Answer state
+  const [selectedAnswer, setSelectedAnswer] = useState<'yes' | 'no' | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [answeredWith, setAnsweredWith] = useState<'yes' | 'no' | null>(null);
+
+  // Time-lock countdown
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     if ((window as any).__pwaPrompt) setPwaInstallable(true);
     const onInstallable = () => setPwaInstallable(true);
@@ -109,12 +145,11 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
   useEffect(() => {
     async function init() {
       let savedEmail = '';
-      let savedName = '';
       try {
         const prefs = JSON.parse(localStorage.getItem('verikey_prefs') ?? '{}');
         if (prefs.lang) setLang(prefs.lang);
         if (prefs.email) { savedEmail = prefs.email; setEmail(prefs.email); }
-        if (prefs.name) { savedName = prefs.name; setDisplayName(prefs.name); }
+        if (prefs.name) setDisplayName(prefs.name);
       } catch {}
 
       try {
@@ -123,22 +158,45 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
         if (!res.ok) { setFlowState('error'); setErrorMsg('Verification link not found or invalid.'); return; }
         const data: RequestDetails = await res.json();
         setRequestDetails(data);
+
         if (data.status === 'approved') { setFlowState('success'); return; }
         if (data.status === 'rejected') { setFlowState('declined'); return; }
+        if (data.answer_expired) { setFlowState('answer-expired'); return; }
 
-        if (savedEmail) {
-          setAutoFilledEmail(savedEmail);
-          // Check if this email has credentials
-          const authRes = await fetch('/api/webauthn/auth/options', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: savedEmail, token }),
-          });
-          if (authRes.status === 404) setFlowState('register');
-          else if (authRes.ok) setFlowState('authenticate');
-          else setFlowState('email-input');
+        // Start countdown timer
+        const deadline = new Date(data.answer_deadline).getTime();
+        const tick = () => {
+          const remaining = Math.max(0, Math.floor((deadline - Date.now()) / 1000));
+          setSecondsLeft(remaining);
+          if (remaining === 0) {
+            clearInterval(countdownRef.current!);
+            setFlowState('answer-expired');
+          }
+        };
+        tick();
+        countdownRef.current = setInterval(tick, 1000);
+
+        if (!data.is_self_registration) {
+          // For normal verification requests, go to answer step first
+          if (savedEmail) {
+            setAutoFilledEmail(savedEmail);
+          }
+          setFlowState('answer');
         } else {
-          setFlowState('email-input');
+          // Self-registration skips the answer step
+          if (savedEmail) {
+            setAutoFilledEmail(savedEmail);
+            const authRes = await fetch('/api/webauthn/auth/options', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: savedEmail, token }),
+            });
+            if (authRes.status === 404) setFlowState('register');
+            else if (authRes.ok) setFlowState('authenticate');
+            else setFlowState('email-input');
+          } else {
+            setFlowState('email-input');
+          }
         }
       } catch {
         setFlowState('error');
@@ -146,17 +204,57 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       }
     }
     init();
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, [token]);
 
-  // Redirect home after success or decline so the user lands back on the main screen
+  // Redirect home after success or decline
   useEffect(() => {
     if (flowState !== 'success' && flowState !== 'declined') return;
-    const id = setTimeout(() => router.push('/'), 2000);
+    const id = setTimeout(() => router.push('/'), 3000);
     return () => clearTimeout(id);
   }, [flowState, router]);
 
   const t = T[lang];
   function toggleLang() { setLang(l => l === 'he' ? 'en' : 'he'); }
+
+  // After choosing answer, submit it and move to biometric
+  const handleAnswerSubmit = useCallback(async () => {
+    if (!selectedAnswer) return;
+    setErrorMsg('');
+
+    try {
+      const res = await fetch(`/api/verify/${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_answer', answer: selectedAnswer, note: noteText }),
+      });
+      if (res.status === 410) { setFlowState('answer-expired'); return; }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setErrorMsg(d.error ?? 'Something went wrong.');
+        return;
+      }
+    } catch {
+      setErrorMsg('Network error. Please try again.');
+      return;
+    }
+
+    setAnsweredWith(selectedAnswer);
+
+    // Now proceed to biometric
+    if (autoFilledEmail) {
+      const authRes = await fetch('/api/webauthn/auth/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: autoFilledEmail, token }),
+      });
+      if (authRes.status === 404) setFlowState('register');
+      else if (authRes.ok) setFlowState('authenticate');
+      else setFlowState('email-input');
+    } else {
+      setFlowState('email-input');
+    }
+  }, [selectedAnswer, noteText, token, autoFilledEmail]);
 
   const handleEmailSubmit = useCallback(async () => {
     if (!email.trim()) return;
@@ -177,7 +275,6 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
     }
   }, [email, token]);
 
-  // Registration: send OTP first
   const handleSendRegisterOtp = useCallback(async () => {
     setErrorMsg('');
     const res = await fetch('/api/otp/send', {
@@ -202,10 +299,6 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: emailNorm, display_name: name, otp: otpCode, token }),
       });
-      if (optRes.status === 403) {
-        const { error } = await optRes.json().catch(() => ({}));
-        throw new Error(error ?? 'This link was not sent to that email address.');
-      }
       if (!optRes.ok) {
         const { error } = await optRes.json().catch(() => ({}));
         throw new Error(error ?? 'Failed to get registration options');
@@ -234,7 +327,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
     setStatusMsg(lang === 'he' ? 'ממתין לאישור ביומטרי…' : 'Waiting for biometric confirmation…');
     setFlowState('loading');
     try {
-      const emailNorm = email.trim().toLowerCase();
+      const emailNorm = (autoFilledEmail || email).trim().toLowerCase();
       const optRes = await fetch('/api/webauthn/auth/options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -257,7 +350,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       setFlowState('authenticate');
       setErrorMsg(err instanceof Error ? err.message : 'Authentication failed.');
     }
-  }, [email, token, lang]);
+  }, [email, autoFilledEmail, token, lang]);
 
   const handleDecline = useCallback(async () => {
     try {
@@ -307,43 +400,45 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
     </div>
   ) : null;
 
-  // Request header shown above all interactive states
-  const requestHeader = requestDetails && (
-    <>
-      <div style={{ fontSize: '2.5rem' }}>🔐</div>
-      <h1 style={{ fontSize: '1.5rem', marginTop: '1rem', marginBottom: '0.5rem' }}>VeriKey</h1>
-      {requestDetails.is_self_registration ? (
-        <p style={{ color: '#374151', marginBottom: '1.5rem' }}>
-          <strong>{t.selfSetupTitle}</strong><br />
-          <span style={{ color: '#6b7280', fontSize: '0.9rem' }}>{t.selfSetupDesc}</span>
+  // Countdown badge
+  const countdownBadge = secondsLeft !== null && flowState === 'answer' ? (
+    <div style={{
+      display: 'inline-block', background: secondsLeft < 60 ? '#fef2f2' : '#f0f4ff',
+      border: `1.5px solid ${secondsLeft < 60 ? '#fecaca' : '#c7d2fe'}`,
+      borderRadius: '0.5rem', padding: '0.25rem 0.6rem', fontSize: '0.78rem',
+      color: secondsLeft < 60 ? '#dc2626' : '#3730a3', fontWeight: 600, marginBottom: '0.75rem',
+    }}>
+      ⏱ {t.timeLeft(secondsLeft)}
+    </div>
+  ) : null;
+
+  // Question box — shown during answer step and auth steps
+  const questionBox = requestDetails && !requestDetails.is_self_registration && (
+    <div style={{ width: '100%', marginBottom: '1.25rem' }}>
+      <p style={{ color: '#374151', fontSize: '0.88rem', margin: '0 0 0.5rem', fontWeight: 600 }}>
+        {t.requesterQuestion(requestDetails.requester_name)}
+      </p>
+      <div style={{ background: '#f0f4ff', border: '1.5px solid #c7d2fe', borderRadius: '0.85rem', padding: '0.85rem 1rem' }}>
+        <p style={{ color: '#1e3a8a', fontWeight: 700, fontSize: '1.05rem', margin: 0, fontStyle: 'italic' }}>
+          "{requestDetails.message_text}"
         </p>
-      ) : (
-        <>
-          <p style={{ color: '#374151', marginBottom: '0.25rem' }}>
-            <strong>{t.requesterMsg(requestDetails.requester_name)}</strong>
-          </p>
-          <p style={{ color: '#6b7280', fontStyle: 'italic', marginBottom: '1.5rem' }}>
-            {t.reasonLabel} {requestDetails.message_text}
-          </p>
-        </>
-      )}
-    </>
+      </div>
+    </div>
   );
 
   if (flowState === 'loading') return (
     <main style={containerStyle}>
       <button style={langBtn} onClick={toggleLang}>{t.langLabel}</button>
       <p style={{ color: '#6b7280' }}>{statusMsg || t.loading}</p>
-      {installBanner}
     </main>
   );
 
-  if (flowState === 'expired') return (
+  if (flowState === 'expired' || flowState === 'answer-expired') return (
     <main style={containerStyle}>
       <button style={langBtn} onClick={toggleLang}>{t.langLabel}</button>
       <div style={{ fontSize: '3rem' }}>⏰</div>
       <h1 style={{ fontSize: '1.5rem', marginTop: '1rem' }}>{t.expired}</h1>
-      <p style={{ color: '#6b7280' }}>{t.expiredDesc}</p>
+      <p style={{ color: '#6b7280' }}>{flowState === 'answer-expired' ? t.answerExpiredDesc : t.expiredDesc}</p>
       {installBanner}
     </main>
   );
@@ -358,26 +453,37 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
     </main>
   );
 
-  if (flowState === 'success') return (
-    <main style={containerStyle}>
-      <button style={langBtn} onClick={toggleLang}>{t.langLabel}</button>
-      <div style={{ fontSize: '3rem' }}>✅</div>
-      <h1 style={{ fontSize: '1.5rem', marginTop: '1rem' }}>
-        {requestDetails?.is_self_registration ? t.selfSetupSuccessTitle : t.successTitle}
-      </h1>
-      <p style={{ color: '#6b7280' }}>
-        {requestDetails?.is_self_registration
-          ? (firstTimeSetup ? t.selfSetupSuccessDesc : t.selfSetupSuccessDescRepeat)
-          : t.successDesc}
-      </p>
-      {installBanner}
-    </main>
-  );
+  if (flowState === 'success') {
+    const isSelfSetup = requestDetails?.is_self_registration;
+    const answeredNo = answeredWith === 'no';
+    return (
+      <main style={containerStyle}>
+        <button style={langBtn} onClick={toggleLang}>{t.langLabel}</button>
+        <div style={{ fontSize: '3rem' }}>{answeredNo ? '🚨' : '✅'}</div>
+        <h1 style={{ fontSize: '1.5rem', marginTop: '1rem', color: answeredNo ? '#dc2626' : '#15803d' }}>
+          {isSelfSetup ? t.selfSetupSuccessTitle : t.successTitle}
+        </h1>
+        <p style={{ color: '#374151' }}>
+          {isSelfSetup
+            ? (firstTimeSetup ? t.selfSetupSuccessDesc : t.selfSetupSuccessDescRepeat)
+            : (answeredNo ? t.successNo : t.successYes)}
+        </p>
+        {answeredNo && (
+          <div style={{ marginTop: '1rem', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: '0.85rem', padding: '0.85rem 1rem' }}>
+            <p style={{ color: '#dc2626', fontSize: '0.88rem', margin: 0, fontWeight: 600 }}>
+              ⚠️ {lang === 'he' ? 'הודעת אזהרה נשלחה לשולח.' : 'An alert has been sent to the requester.'}
+            </p>
+          </div>
+        )}
+        {installBanner}
+      </main>
+    );
+  }
 
   if (flowState === 'declined') return (
     <main style={containerStyle}>
       <button style={langBtn} onClick={toggleLang}>{t.langLabel}</button>
-      <div style={{ fontSize: '3rem' }}>❌</div>
+      <div style={{ fontSize: '3rem' }}>⚪</div>
       <h1 style={{ fontSize: '1.5rem', marginTop: '1rem' }}>{t.declinedTitle}</h1>
       <p style={{ color: '#6b7280' }}>{t.declinedDesc}</p>
       {installBanner}
@@ -387,12 +493,87 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
   return (
     <main style={containerStyle}>
       <button style={langBtn} onClick={toggleLang}>{t.langLabel}</button>
-      {requestHeader}
+      <div style={{ fontSize: '2.5rem' }}>🔐</div>
+      <h1 style={{ fontSize: '1.5rem', margin: '0.75rem 0 1.25rem' }}>VeriKey</h1>
+
+      {/* Self-setup header */}
+      {requestDetails?.is_self_registration && (
+        <p style={{ color: '#374151', marginBottom: '1.5rem' }}>
+          <strong>{t.selfSetupTitle}</strong><br />
+          <span style={{ color: '#6b7280', fontSize: '0.9rem' }}>{t.selfSetupDesc}</span>
+        </p>
+      )}
+
+      {/* ── ANSWER STEP ── */}
+      {flowState === 'answer' && (
+        <>
+          {countdownBadge}
+          {questionBox}
+          <p style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '1rem' }}>{t.answerPrompt}</p>
+
+          {/* Yes / No buttons */}
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <button
+              onClick={() => setSelectedAnswer('yes')}
+              style={{
+                ...btnStyle, marginTop: 0,
+                background: selectedAnswer === 'yes' ? '#dcfce7' : '#f9fafb',
+                border: `2px solid ${selectedAnswer === 'yes' ? '#16a34a' : '#e5e7eb'}`,
+                color: selectedAnswer === 'yes' ? '#15803d' : '#374151',
+                fontSize: '1.05rem', fontWeight: 700,
+              }}>
+              {t.answerYes}
+            </button>
+            <button
+              onClick={() => setSelectedAnswer('no')}
+              style={{
+                ...btnStyle, marginTop: 0,
+                background: selectedAnswer === 'no' ? '#fef2f2' : '#f9fafb',
+                border: `2px solid ${selectedAnswer === 'no' ? '#dc2626' : '#e5e7eb'}`,
+                color: selectedAnswer === 'no' ? '#dc2626' : '#374151',
+                fontSize: '1.05rem', fontWeight: 700,
+              }}>
+              {t.answerNo}
+            </button>
+          </div>
+
+          {/* Optional note */}
+          {selectedAnswer && (
+            <textarea
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+              placeholder={t.notePlaceholder}
+              rows={2}
+              style={{ ...inputStyle, marginTop: '0.85rem', resize: 'none', fontSize: '0.95rem', direction: t.dir } as React.CSSProperties}
+            />
+          )}
+
+          {errorMsg && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.5rem' }}>{errorMsg}</p>}
+
+          <button
+            onClick={handleAnswerSubmit}
+            disabled={!selectedAnswer}
+            style={{
+              ...btnStyle,
+              background: selectedAnswer ? '#2563eb' : '#e5e7eb',
+              color: selectedAnswer ? '#fff' : '#9ca3af',
+              cursor: selectedAnswer ? 'pointer' : 'not-allowed',
+              fontSize: '1.1rem',
+            }}>
+            {t.verifyBtn}
+          </button>
+
+          <button onClick={handleDecline}
+            style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline', marginTop: '0.75rem' }}>
+            {t.declineBtn}
+          </button>
+        </>
+      )}
 
       {/* Email auto-fill chip */}
-      {autoFilledEmail && (flowState === 'register' || flowState === 'register-otp-sent' || flowState === 'authenticate') && (
+      {autoFilledEmail && (flowState === 'email-input' || flowState === 'register' || flowState === 'register-otp-sent' || flowState === 'authenticate') && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.75rem', background: '#f0f4ff', borderRadius: '0.75rem', padding: '0.5rem 0.9rem' }}>
-          <span style={{ fontSize: '1rem' }}>📧</span>
+          <span>📧</span>
           <span style={{ fontWeight: 600, color: '#1e3a8a', direction: 'ltr' }}>{autoFilledEmail}</span>
           <button onClick={() => { setAutoFilledEmail(''); setEmail(''); setFlowState('email-input'); }}
             style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
@@ -404,40 +585,36 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
       {/* Email input */}
       {flowState === 'email-input' && (
         <>
+          {questionBox}
           <p style={{ color: '#374151', marginBottom: '0.5rem' }}>{t.emailPrompt}</p>
           <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-            placeholder={t.emailPlaceholder}
-            style={inputStyle} onKeyDown={e => e.key === 'Enter' && handleEmailSubmit()} />
+            placeholder={t.emailPlaceholder} style={inputStyle}
+            onKeyDown={e => e.key === 'Enter' && handleEmailSubmit()} />
           <button onClick={handleEmailSubmit} style={{ ...btnStyle, background: '#2563eb', color: '#fff' }}>
             {t.continueBtn}
           </button>
         </>
       )}
 
-      {/* Register: first show name + send OTP */}
+      {/* Register: send OTP */}
       {flowState === 'register' && (
         <>
-          {!requestDetails?.is_self_registration && (
-            <p style={{ color: '#374151', marginBottom: '1rem' }}>{t.noPasskeyDesc}</p>
-          )}
+          {!requestDetails?.is_self_registration && <p style={{ color: '#374151', marginBottom: '1rem' }}>{t.noPasskeyDesc}</p>}
           {!autoFilledEmail && (
             <div style={{ width: '100%', marginBottom: '0.75rem' }}>
               <p style={{ color: '#374151', fontSize: '0.88rem', margin: '0 0 0.3rem' }}>{t.labelName}</p>
-              <input style={inputStyle} placeholder={t.namePlaceholder} value={displayName}
-                onChange={e => setDisplayName(e.target.value)} />
+              <input style={inputStyle} placeholder={t.namePlaceholder} value={displayName} onChange={e => setDisplayName(e.target.value)} />
             </div>
           )}
           {errorMsg && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginBottom: '0.5rem' }}>{errorMsg}</p>}
-          <button onClick={handleSendRegisterOtp} style={{ ...btnStyle, background: '#059669', color: '#fff' }}>
-            {t.sendOtp}
-          </button>
+          <button onClick={handleSendRegisterOtp} style={{ ...btnStyle, background: '#059669', color: '#fff' }}>{t.sendOtp}</button>
           {!requestDetails?.is_self_registration && (
             <button onClick={handleDecline} style={{ ...btnStyle, background: '#f3f4f6', color: '#374151' }}>{t.declineBtn}</button>
           )}
         </>
       )}
 
-      {/* Register: OTP entered, do biometric */}
+      {/* Register: OTP entered, biometric */}
       {flowState === 'register-otp-sent' && (
         <>
           <p style={{ color: '#374151', fontSize: '0.875rem', marginBottom: '0.5rem' }}>{t.otpSentDesc(email)}</p>
@@ -445,9 +622,7 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
             type="text" inputMode="numeric" maxLength={6} placeholder={t.otpPlaceholder}
             value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
           {errorMsg && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.5rem' }}>{errorMsg}</p>}
-          <button onClick={handleRegister} style={{ ...btnStyle, background: '#059669', color: '#fff' }}>
-            {t.setupBtn}
-          </button>
+          <button onClick={handleRegister} style={{ ...btnStyle, background: '#059669', color: '#fff' }}>{t.setupBtn}</button>
           <button onClick={handleSendRegisterOtp} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.82rem', cursor: 'pointer', textDecoration: 'underline', marginTop: '0.5rem' }}>
             {t.resendOtp}
           </button>
@@ -457,12 +632,24 @@ export default function VerifyPage({ params }: { params: { token: string } }) {
         </>
       )}
 
-      {/* Authenticate: just biometric */}
+      {/* Authenticate: biometric */}
       {flowState === 'authenticate' && (
         <>
+          {questionBox}
+          {answeredWith && (
+            <div style={{
+              width: '100%', marginBottom: '1rem', padding: '0.65rem 1rem',
+              background: answeredWith === 'yes' ? '#f0fdf4' : '#fef2f2',
+              border: `1.5px solid ${answeredWith === 'yes' ? '#bbf7d0' : '#fecaca'}`,
+              borderRadius: '0.75rem', fontWeight: 700, fontSize: '0.95rem',
+              color: answeredWith === 'yes' ? '#15803d' : '#dc2626',
+            }}>
+              {answeredWith === 'yes' ? t.answerYes : t.answerNo}
+            </div>
+          )}
           {errorMsg && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginBottom: '0.5rem' }}>{errorMsg}</p>}
           <button onClick={handleAuthenticate} style={{ ...btnStyle, background: '#2563eb', color: '#fff', fontSize: '1.2rem', padding: '1.25rem' }}>
-            {t.approveBtn}
+            {t.verifyBtn}
           </button>
           <button onClick={handleDecline} style={{ ...btnStyle, background: '#f3f4f6', color: '#374151' }}>{t.declineBtn}</button>
         </>

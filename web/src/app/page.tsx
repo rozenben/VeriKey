@@ -161,6 +161,8 @@ interface DbHistoryEntry {
   status: string;
   created_at: string;
   responded_at: string | null;
+  recipient_answer: 'yes' | 'no' | null;
+  recipient_note: string | null;
 }
 
 const PENDING_KEY = 'verikey_pending_request';
@@ -231,6 +233,10 @@ export default function HomePage() {
   // Personal area panel
   const [showPanel, setShowPanel] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+
+  // Verification result answer
+  const [resultAnswer, setResultAnswer] = useState<'yes' | 'no' | null>(null);
+  const [resultNote, setResultNote] = useState<string | null>(null);
 
   // Polling
   const [expiresAt, setExpiresAt] = useState<number>(0);
@@ -315,6 +321,8 @@ export default function HomePage() {
         return;
       }
       let statusValue: string | null = null;
+      let answer: 'yes' | 'no' | null = null;
+      let note: string | null = null;
       try {
         const res = await fetch(`/api/requests/${requestIdRef.current}/status`, {
           headers: apiTokenRef.current ? { 'Authorization': `Bearer ${apiTokenRef.current}` } : {},
@@ -322,8 +330,14 @@ export default function HomePage() {
         if (!res.ok) return;
         const data = await res.json();
         statusValue = data.status;
+        answer = data.recipient_answer ?? null;
+        note = data.recipient_note ?? null;
       } catch { return; }
-      if (statusValue === 'approved') finish('approved', 'approved');
+      if (statusValue === 'approved') {
+        setResultAnswer(answer);
+        setResultNote(note);
+        finish('approved', 'approved');
+      }
       else if (statusValue === 'rejected' || statusValue === 'declined') finish('declined', 'declined');
       else if (statusValue === 'expired') finish('expired', 'expired');
     }, 2000);
@@ -631,6 +645,8 @@ export default function HomePage() {
     setExpiresAt(0);
     setError('');
     setRecipientEmail('');
+    setResultAnswer(null);
+    setResultNote(null);
   }
 
   // ── Styles ────────────────────────────────────────────────────────────────
@@ -915,14 +931,58 @@ export default function HomePage() {
           )}
 
           {/* Approved */}
-          {step === 'approved' && (
-            <div style={{ textAlign: 'center', padding: '1rem 0' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>🎉</div>
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#16a34a', marginBottom: '0.5rem' }}>{t.approved}</h2>
-              <p style={{ color: '#374151', fontSize: '0.95rem', marginBottom: '1.5rem' }}>{t.approvedDesc(sentRecipient)}</p>
-              <button style={btnPrimary} onClick={handleReset}>{t.sendAnother}</button>
-            </div>
-          )}
+          {step === 'approved' && (() => {
+            const isSuspicious = resultAnswer === 'no';
+            return (
+              <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>{isSuspicious ? '🚨' : '🎉'}</div>
+                <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: isSuspicious ? '#dc2626' : '#16a34a', marginBottom: '0.5rem' }}>
+                  {isSuspicious
+                    ? (lang === 'he' ? 'זהות אומתה — חשוד!' : 'Identity Verified — SUSPICIOUS')
+                    : t.approved}
+                </h2>
+                <p style={{ color: '#374151', fontSize: '0.95rem' }}>{t.approvedDesc(sentRecipient)}</p>
+
+                {/* Answer badge */}
+                {resultAnswer && (
+                  <div style={{
+                    margin: '0.85rem 0',
+                    padding: '0.65rem 1rem',
+                    background: isSuspicious ? '#fef2f2' : '#f0fdf4',
+                    border: `1.5px solid ${isSuspicious ? '#fecaca' : '#bbf7d0'}`,
+                    borderRadius: '0.75rem',
+                    fontWeight: 700,
+                    color: isSuspicious ? '#dc2626' : '#15803d',
+                    fontSize: '0.95rem',
+                  }}>
+                    {resultAnswer === 'yes'
+                      ? (lang === 'he' ? '✅ הם ענו: כן' : '✅ They answered: YES')
+                      : (lang === 'he' ? '❌ הם ענו: לא' : '❌ They answered: NO')}
+                  </div>
+                )}
+
+                {/* Note */}
+                {resultNote && (
+                  <div style={{ margin: '0.5rem 0 0.85rem', padding: '0.6rem 0.9rem', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '0.65rem', fontStyle: 'italic', color: '#374151', fontSize: '0.88rem', textAlign: 'left', direction: 'ltr' }}>
+                    "{resultNote}"
+                  </div>
+                )}
+
+                {/* Suspicious warning */}
+                {isSuspicious && (
+                  <div style={{ margin: '0 0 1rem', padding: '0.85rem 1rem', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: '0.75rem' }}>
+                    <p style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>
+                      ⚠️ {lang === 'he'
+                        ? 'האדם האמיתי הכחיש את הפעולה. הבקשה המקורית עלולה להיות הונאה.'
+                        : 'The real person denied this action. The original request may be fraudulent.'}
+                    </p>
+                  </div>
+                )}
+
+                <button style={btnPrimary} onClick={handleReset}>{t.sendAnother}</button>
+              </div>
+            );
+          })()}
 
           {/* Declined */}
           {step === 'declined' && (
@@ -960,15 +1020,28 @@ export default function HomePage() {
                 <p style={{ color: '#9ca3af', fontSize: '0.82rem', textAlign: 'center', margin: '0.5rem 0' }}>{t.historyEmpty}</p>
               )}
               {dbHistory.map((h) => {
-                const statusColor = h.status === 'approved' ? '#16a34a' : h.status === 'rejected' ? '#dc2626' : h.status === 'expired' ? '#d97706' : '#6b7280';
-                const statusLabel = h.status === 'approved' ? t.statusApproved : h.status === 'rejected' ? t.statusDeclined : h.status === 'expired' ? t.statusExpired : '⏳';
+                const isSuspicious = h.status === 'approved' && h.recipient_answer === 'no';
+                const statusColor = isSuspicious ? '#dc2626' : h.status === 'approved' ? '#16a34a' : h.status === 'rejected' ? '#6b7280' : h.status === 'expired' ? '#d97706' : '#6b7280';
+                const statusLabel = isSuspicious
+                  ? '🚨 ' + (lang === 'he' ? 'חשוד' : 'Suspicious')
+                  : h.status === 'approved' && h.recipient_answer === 'yes'
+                    ? t.statusApproved
+                    : h.status === 'approved'
+                      ? t.statusApproved
+                      : h.status === 'rejected' ? t.statusDeclined
+                      : h.status === 'expired' ? t.statusExpired : '⏳';
                 return (
-                  <div key={h.id} style={{ background: '#fff', borderRadius: '0.6rem', padding: '0.6rem 0.9rem', fontSize: '0.82rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', direction: t.dir, gap: '0.5rem' }}>
-                    <span style={{ color: '#374151', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'ltr', flex: 1 }}>{h.recipient}</span>
-                    <span style={{ color: '#9ca3af', flexShrink: 0, fontSize: '0.75rem' }}>
-                      {new Date(h.created_at).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { month: 'short', day: 'numeric' })}
-                    </span>
-                    <span style={{ fontWeight: 700, color: statusColor, flexShrink: 0 }}>{statusLabel}</span>
+                  <div key={h.id} style={{ background: isSuspicious ? '#fef2f2' : '#fff', borderRadius: '0.6rem', padding: '0.6rem 0.9rem', fontSize: '0.82rem', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', direction: t.dir, border: isSuspicious ? '1.5px solid #fecaca' : 'none' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ color: '#374151', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'ltr', flex: 1 }}>{h.recipient}</span>
+                      <span style={{ color: '#9ca3af', flexShrink: 0, fontSize: '0.75rem' }}>
+                        {new Date(h.created_at).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                      <span style={{ fontWeight: 700, color: statusColor, flexShrink: 0 }}>{statusLabel}</span>
+                    </div>
+                    {h.recipient_note && (
+                      <p style={{ margin: '0.3rem 0 0', fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', direction: 'ltr', textAlign: 'left' }}>"{h.recipient_note}"</p>
+                    )}
                   </div>
                 );
               })}
