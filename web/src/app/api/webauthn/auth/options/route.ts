@@ -6,7 +6,7 @@ import { authChallengeStore } from '@/lib/challenge-store';
 import { hmacEmail } from '@/lib/hash';
 
 function hashOtp(code: string): string {
-  const secret = process.env.IDENTIFIER_HMAC_SECRET ?? process.env.PHONE_HMAC_SECRET ?? '';
+  const secret = process.env.IDENTIFIER_HMAC_SECRET ?? '';
   return createHmac('sha256', secret).update(code).digest('hex');
 }
 
