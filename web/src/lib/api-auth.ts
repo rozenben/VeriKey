@@ -3,7 +3,7 @@ import pool from '@/lib/db';
 import { NextRequest } from 'next/server';
 
 function hashToken(raw: string): string {
-  const secret = process.env.IDENTIFIER_HMAC_SECRET ?? process.env.PHONE_HMAC_SECRET ?? '';
+  const secret = process.env.IDENTIFIER_HMAC_SECRET ?? '';
   return createHmac('sha256', secret).update(raw).digest('hex');
 }
 

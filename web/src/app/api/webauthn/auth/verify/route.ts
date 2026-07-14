@@ -9,7 +9,7 @@ import { issueApiToken } from '@/lib/api-auth';
 import { sendResultEmail } from '@/lib/verify-email';
 
 function hashOtp(code: string): string {
-  const secret = process.env.IDENTIFIER_HMAC_SECRET ?? process.env.PHONE_HMAC_SECRET ?? '';
+  const secret = process.env.IDENTIFIER_HMAC_SECRET ?? '';
   return createHmac('sha256', secret).update(code).digest('hex');
 }
 
